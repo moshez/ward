@@ -20,6 +20,23 @@ assume ward_dom_state(l) = ptr l
 
 in
 
+(*
+ * $UNSAFE justifications — each use is marked with its pattern tag.
+ *
+ * [U1] cast{ptr}(tag) for ward_safe_text -> ptr (create_element, set_attr):
+ *   ward_safe_text is abstype assumed as ptr in memory.dats, but that
+ *   assumption is invisible from this module (cross-module abstraction).
+ *   Alternative considered: expose ward_safe_text_ptr in memory.sats.
+ *   Rejected: would let user code obtain raw pointers, breaking encapsulation.
+ *
+ * [U2] castvwtp1{ptr}(text/value) for ward_arr_borrow -> ptr
+ *   (set_text, set_attr, set_style):
+ *   Same cross-module barrier. castvwtp1 (not castvwtp0) preserves the
+ *   borrow — the value is !-qualified and not consumed.
+ *   Alternative considered: expose ward_arr_borrow_ptr in memory.sats.
+ *   Rejected: same reason — would expose raw pointers to user code.
+ *)
+
 implement
 ward_dom_init() = _ward_malloc_bytes(WARD_DOM_BUF_CAP_DYN)
 
@@ -44,7 +61,7 @@ ward_dom_create_element{l}{tl}
   val () = $extfcall(void, "ward_set_i32", state, 5, parent_id)
   val () = $extfcall(void, "ward_set_byte", state, 9, tl)
   val () = $extfcall(void, "ward_copy_at", state, 10,
-                     $UNSAFE.cast{ptr}(tag), tl)
+                     $UNSAFE.cast{ptr}(tag), tl) (* [U1] *)
   val () = _ward_dom_flush(state, 10 + tl)
 in state end
 
@@ -57,7 +74,7 @@ ward_dom_set_text{l}{lb}{tl}
   val () = $extfcall(void, "ward_set_byte", state, 5, tl)
   val () = $extfcall(void, "ward_set_byte", state, 6, 0)
   val () = $extfcall(void, "ward_copy_at", state, 7,
-                     $UNSAFE.castvwtp1{ptr}(text), tl)
+                     $UNSAFE.castvwtp1{ptr}(text), tl) (* [U2] *)
   val () = _ward_dom_flush(state, 7 + tl)
 in state end
 
@@ -70,12 +87,12 @@ ward_dom_set_attr{l}{lb}{nl}{vl}
   val () = $extfcall(void, "ward_set_i32", state, 1, node_id)
   val () = $extfcall(void, "ward_set_byte", state, 5, nl)
   val () = $extfcall(void, "ward_copy_at", state, 6,
-                     $UNSAFE.cast{ptr}(attr_name), nl)
+                     $UNSAFE.cast{ptr}(attr_name), nl) (* [U1] *)
   val off = 6 + nl
   val () = $extfcall(void, "ward_set_byte", state, off, vl)
   val () = $extfcall(void, "ward_set_byte", state, off + 1, 0)
   val () = $extfcall(void, "ward_copy_at", state, off + 2,
-                     $UNSAFE.castvwtp1{ptr}(value), vl)
+                     $UNSAFE.castvwtp1{ptr}(value), vl) (* [U2] *)
   val () = _ward_dom_flush(state, off + 2 + vl)
 in state end
 
@@ -95,7 +112,7 @@ ward_dom_set_style{l}{lb}{vl}
   val () = $extfcall(void, "ward_set_byte", state, 11, vl)
   val () = $extfcall(void, "ward_set_byte", state, 12, 0)
   val () = $extfcall(void, "ward_copy_at", state, 13,
-                     $UNSAFE.castvwtp1{ptr}(value), vl)
+                     $UNSAFE.castvwtp1{ptr}(value), vl) (* [U2] *)
   val () = _ward_dom_flush(state, 13 + vl)
 in state end
 

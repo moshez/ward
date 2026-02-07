@@ -2,10 +2,10 @@
 (* This MUST fail to compile — resolver is linear, must be consumed *)
 
 #include "share/atspre_staload.hats"
-staload "./../memory.sats"
-staload "./../promise.sats"
-staload _ = "./../memory.dats"
-staload _ = "./../promise.dats"
+staload "./../../lib/memory.sats"
+staload "./../../lib/promise.sats"
+staload _ = "./../../lib/memory.dats"
+staload _ = "./../../lib/promise.dats"
 
 fun bad (): void = let
   val @(p, r) = ward_promise_create<int> ()

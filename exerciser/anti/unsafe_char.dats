@@ -2,8 +2,8 @@
 (* This MUST fail to compile — '<' violates SAFE_CHAR constraint *)
 
 #include "share/atspre_staload.hats"
-staload "./../memory.sats"
-staload _ = "./../memory.dats"
+staload "./../../lib/memory.sats"
+staload _ = "./../../lib/memory.dats"
 
 fun bad (): void = let
   val b = ward_text_build(1)

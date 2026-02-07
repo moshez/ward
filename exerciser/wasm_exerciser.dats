@@ -1,9 +1,9 @@
 (* wasm_exerciser.dats -- WASM exerciser: exports functions that exercise ward *)
 
 #include "share/atspre_staload.hats"
-staload "./memory.sats"
-dynload "./memory.dats"
-staload _ = "./memory.dats"
+staload "./../lib/memory.sats"
+dynload "./../lib/memory.dats"
+staload _ = "./../lib/memory.dats"
 
 (* === Export: exercise byte arrays (alloc, split, set, join, free) === *)
 extern fun ward_test_raw (): int = "mac#"

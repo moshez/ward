@@ -13,16 +13,16 @@ WARD_DIR   := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # WASM flags
 WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
-  -I$(WARD_DIR)wasm_stubs -I$(PATSHOME) -I$(PATSHOME)/ccomp/runtime \
+  -I$(WARD_DIR)exerciser/wasm_stubs -I$(PATSHOME) -I$(PATSHOME)/ccomp/runtime \
   -D_ATS_CCOMP_HEADER_NONE_ \
   -D_ATS_CCOMP_EXCEPTION_NONE_ \
   -D_ATS_CCOMP_PRELUDE_NONE_ \
-  -include $(WARD_DIR)runtime.h
+  -include $(WARD_DIR)lib/runtime.h
 WASM_LDFLAGS := --no-entry --export-dynamic \
   -z stack-size=65536 --initial-memory=1048576
 
 # Anti-exerciser files (must all FAIL to compile)
-ANTI_SRCS := $(wildcard anti/*.dats)
+ANTI_SRCS := $(wildcard exerciser/anti/*.dats)
 
 # --- Default target ---
 .PHONY: all clean exerciser wasm anti-exerciser check
@@ -35,24 +35,24 @@ check: wasm exerciser anti-exerciser
 build:
 	@mkdir -p build
 
-build/memory_dats.c: memory.dats memory.sats | build
+build/memory_dats.c: lib/memory.dats lib/memory.sats | build
 	$(PATSOPT) -o $@ -d $<
 
-build/dom_dats.c: dom.dats dom.sats memory.sats memory.dats | build
+build/dom_dats.c: lib/dom.dats lib/dom.sats lib/memory.sats lib/memory.dats | build
 	$(PATSOPT) -o $@ -d $<
 
-build/promise_dats.c: promise.dats promise.sats memory.sats memory.dats | build
+build/promise_dats.c: lib/promise.dats lib/promise.sats lib/memory.sats lib/memory.dats | build
 	$(PATSOPT) -o $@ -d $<
 
-build/exerciser_dats.c: exerciser.dats memory.sats memory.dats dom.sats dom.dats promise.sats promise.dats | build
+build/exerciser_dats.c: exerciser/exerciser.dats lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats lib/promise.sats lib/promise.dats | build
 	$(PATSOPT) -o $@ -d $<
 
-build/wasm_exerciser_dats.c: wasm_exerciser.dats memory.sats memory.dats dom.sats dom.dats | build
+build/wasm_exerciser_dats.c: exerciser/wasm_exerciser.dats lib/memory.sats lib/memory.dats | build
 	$(PATSOPT) -o $@ -d $<
 
 # --- Native exerciser (links with libc) ---
-build/exerciser: build/memory_dats.c build/dom_dats.c build/promise_dats.c build/exerciser_dats.c ward_prelude.h | build
-	$(CC) $(CFLAGS_ATS) -include $(WARD_DIR)ward_prelude.h \
+build/exerciser: build/memory_dats.c build/dom_dats.c build/promise_dats.c build/exerciser_dats.c lib/ward_prelude.h | build
+	$(CC) $(CFLAGS_ATS) -include $(WARD_DIR)lib/ward_prelude.h \
 	  -o $@ build/memory_dats.c build/dom_dats.c build/promise_dats.c build/exerciser_dats.c
 
 exerciser: build/exerciser
@@ -60,19 +60,19 @@ exerciser: build/exerciser
 	@build/exerciser
 
 # --- WASM build ---
-build/memory_dats.o: build/memory_dats.c runtime.h | build
+build/memory_dats.o: build/memory_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
-build/dom_dats.o: build/dom_dats.c runtime.h | build
+build/dom_dats.o: build/dom_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
-build/promise_dats.o: build/promise_dats.c runtime.h | build
+build/promise_dats.o: build/promise_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
-build/wasm_exerciser_dats.o: build/wasm_exerciser_dats.c runtime.h | build
+build/wasm_exerciser_dats.o: build/wasm_exerciser_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
-build/runtime.o: runtime.c runtime.h | build
+build/runtime.o: lib/runtime.c lib/runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
 build/ward.wasm: build/memory_dats.o build/dom_dats.o build/promise_dats.o build/wasm_exerciser_dats.o build/runtime.o

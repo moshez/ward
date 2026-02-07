@@ -2,8 +2,8 @@
 (* This MUST fail to compile — access beyond split boundary *)
 
 #include "share/atspre_staload.hats"
-staload "./../memory.sats"
-staload _ = "./../memory.dats"
+staload "./../../lib/memory.sats"
+staload _ = "./../../lib/memory.dats"
 
 fun bad (): void = let
   val arr = ward_arr_alloc<byte> (16)

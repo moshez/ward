@@ -1,15 +1,15 @@
 (* exerciser.dats -- Exercises the ward typed array library *)
 
 #include "share/atspre_staload.hats"
-staload "./memory.sats"
-staload "./dom.sats"
-staload "./promise.sats"
-dynload "./memory.dats"
-dynload "./dom.dats"
-dynload "./promise.dats"
-staload _ = "./memory.dats"
-staload _ = "./dom.dats"
-staload _ = "./promise.dats"
+staload "./../lib/memory.sats"
+staload "./../lib/dom.sats"
+staload "./../lib/promise.sats"
+dynload "./../lib/memory.dats"
+dynload "./../lib/dom.dats"
+dynload "./../lib/promise.dats"
+staload _ = "./../lib/memory.dats"
+staload _ = "./../lib/dom.dats"
+staload _ = "./../lib/promise.dats"
 
 implement main0 () = let
 
