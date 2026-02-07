@@ -50,8 +50,7 @@ end
 (* === Export: exercise layers 5-6 (typed arrays + borrows) === *)
 extern fun ward_test_typed (): int = "mac#"
 implement ward_test_typed () = let
-  val own = ward_malloc (40)
-  val arr = ward_arr_init<int> (own, 10)
+  val arr = ward_arr_alloc<int> (10)
 
   (* Write and read *)
   val () = ward_arr_set<int> (arr, 5, 42)
@@ -68,8 +67,7 @@ implement ward_test_typed () = let
   val v3 = ward_arr_get<int> (arr2, 5)
 
   (* Cleanup *)
-  val own_back = ward_arr_fini<int> (arr2)
-  val () = ward_free (own_back)
+  val () = ward_arr_free<int> (arr2)
 in
   v1 + v2 + v3 (* 42 + 42 + 99 = 183 *)
 end

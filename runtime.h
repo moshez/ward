@@ -172,6 +172,8 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g0int2uint_int_size(x) ((atstype_size)(x))
 #define atspre_g0uint_mul_size(x, y) ((x) * (y))
 #define atspre_add_ptr0_bsz(p, n) ((void*)((char*)(p) + (n)))
+#define atspre_g1int2int_int_int(x) (x)
+#define atspre_g1int_lt_int(x, y) ((x) < (y))
 
 /* === Ward-specific === */
 
@@ -185,6 +187,9 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 
 /* Byte-level pointer arithmetic */
 #define ward_ptr_add(p, n) ((void*)((char*)(p) + (n)))
+
+/* Read a single byte as int */
+#define ward_read_byte(p) ((int)(*(unsigned char*)(p)))
 
 /* Memory operations (implemented in runtime.c) */
 void *malloc(int size);

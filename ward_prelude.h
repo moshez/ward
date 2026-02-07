@@ -15,4 +15,7 @@
 /* Byte-level pointer arithmetic (no sizeof scaling) */
 #define ward_ptr_add(p, n) ((void*)((char*)(p) + (n)))
 
+/* Read a single byte as int */
+#define ward_read_byte(p) ((int)(*(unsigned char*)(p)))
+
 #endif /* WARD_PRELUDE_H */

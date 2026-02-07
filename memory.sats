@@ -3,10 +3,19 @@
 (* No raw pointer extraction — safety guarantees are inescapable. *)
 
 (* ============================================================
-   Layer 1: Sized raw memory with linear ownership
+   Types
    ============================================================ *)
 
 absvtype ward_own(l:addr, n:int)
+absvtype ward_frozen(l:addr, n:int, k:int)
+absvtype ward_borrow(l:addr, n:int)
+absvtype ward_arr(a:t@ype, l:addr, n:int)
+absvtype ward_arr_frozen(a:t@ype, l:addr, n:int, k:int)
+absvtype ward_arr_borrow(a:t@ype, l:addr, n:int)
+
+(* ============================================================
+   Layer 1: Sized raw memory with linear ownership
+   ============================================================ *)
 
 fun ward_malloc {n:pos} (n: int n): [l:agz] ward_own(l, n)
 fun ward_free {l:agz}{n:nat} (own: ward_own(l, n)): void
@@ -26,7 +35,7 @@ fun ward_join
   : ward_own(l, n+m)
 
 (* ============================================================
-   Layer 3: Safe memset / memcpy
+   Layer 3: Memory operations (bounds-checked)
    ============================================================ *)
 
 fun ward_memset
@@ -36,15 +45,24 @@ fun ward_memset
 
 fun ward_memcpy
   {ld,ls:agz}{n,dcap,scap:nat | n <= dcap; n <= scap}
-  (dst: !ward_own(ld, dcap), src: !ward_own(ls, scap), n: int n)
+  (dst: !ward_own(ld, dcap), src: !ward_borrow(ls, scap), n: int n)
   : void
+
+(* Single-byte access to owned memory (bounds-checked).
+   Consume and return ownership — implemented via split/join. *)
+fun ward_peek
+  {l:agz}{n:pos}{i:nat | i < n}
+  (own: ward_own(l, n), i: int i)
+  : @(int, ward_own(l, n))
+
+fun ward_poke
+  {l:agz}{n:pos}{i:nat | i < n}
+  (own: ward_own(l, n), i: int i, v: int)
+  : ward_own(l, n)
 
 (* ============================================================
    Layer 4: Freeze / thaw borrow protocol
    ============================================================ *)
-
-absvtype ward_frozen(l:addr, n:int, k:int)
-absvtype ward_borrow(l:addr, n:int)
 
 fun ward_freeze
   {l:agz}{n:nat}
@@ -73,21 +91,29 @@ fun ward_read
   (borrow: !ward_borrow(l, n), i: int i)
   : int
 
+fun ward_borrow_split
+  {l:agz}{n,m:nat | m <= n}{k:pos}
+  (frozen: !ward_frozen(l, n, k) >> ward_frozen(l, n, k+1),
+   borrow: ward_borrow(l, n), m: int m)
+  : @(ward_borrow(l, m), ward_borrow(l+m, n-m))
+
+fun ward_borrow_join
+  {l:agz}{n,m:nat}{k:int | k > 1}
+  (frozen: !ward_frozen(l, n+m, k) >> ward_frozen(l, n+m, k-1),
+   left: ward_borrow(l, n), right: ward_borrow(l+n, m))
+  : ward_borrow(l, n+m)
+
 (* ============================================================
    Layer 5: Typed arrays (element-indexed linear arrays)
    ============================================================ *)
 
-absvtype ward_arr(a:t@ype, l:addr, n:int)
-
-(* Convert raw memory to typed array of n elements.
-   Caller must ensure sufficient bytes (n * sizeof(a)).
-   The byte count is existentially forgotten — the typed
-   array tracks only element count for bounds checking. *)
+(* Allocate and zero-initialize a typed array of n elements.
+   Computes n * sizeof(a) internally — no size mismatch possible. *)
 fun{a:t@ype}
-ward_arr_init
-  {l:agz}{bytes,n:nat}
-  (own: ward_own(l, bytes), n: int n)
-  : ward_arr(a, l, n)
+ward_arr_alloc
+  {n:pos}
+  (n: int n)
+  : [l:agz] ward_arr(a, l, n)
 
 fun{a:t@ype}
 ward_arr_get
@@ -101,19 +127,16 @@ ward_arr_set
   (arr: !ward_arr(a, l, n), i: int i, v: a)
   : void
 
-(* Dissolve typed array back to raw ownership. *)
+(* Free a typed array. *)
 fun{a:t@ype}
-ward_arr_fini
+ward_arr_free
   {l:agz}{n:nat}
   (arr: ward_arr(a, l, n))
-  : ward_own(l, n)
+  : void
 
 (* ============================================================
    Layer 6: Typed borrows (read-only shared access to typed data)
    ============================================================ *)
-
-absvtype ward_arr_frozen(a:t@ype, l:addr, n:int, k:int)
-absvtype ward_arr_borrow(a:t@ype, l:addr, n:int)
 
 fun{a:t@ype}
 ward_arr_freeze

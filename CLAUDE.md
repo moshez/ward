@@ -55,16 +55,20 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction — 
 | `ward_split(own, m)` | `ward_own(l, n) → @(ward_own(l, m), ward_own(l+m, n-m))` |
 | `ward_join(left, right)` | `@(ward_own(l, n), ward_own(l+n, m)) → ward_own(l, n+m)` |
 | `ward_memset(own, c, n)` | `!ward_own(l, cap), {n <= cap} → void` |
-| `ward_memcpy(dst, src, n)` | `!ward_own(ld, dcap), !ward_own(ls, scap), {n <= dcap; n <= scap} → void` |
+| `ward_memcpy(dst, src, n)` | `!ward_own(ld, dcap), !ward_borrow(ls, scap), {n <= dcap; n <= scap} → void` |
+| `ward_peek(own, i)` | Read byte at offset `i` from owned memory, `{i < n}` |
+| `ward_poke(own, i, v)` | Write byte at offset `i` to owned memory, `{i < n}` |
 | `ward_freeze(own)` | `ward_own(l, n) → @(ward_frozen(l, n, 1), ward_borrow(l, n))` |
 | `ward_thaw(frozen)` | `ward_frozen(l, n, 0) → ward_own(l, n)` |
 | `ward_dup(frozen, borrow)` | Increment borrow count, return new borrow |
 | `ward_drop(frozen, borrow)` | Decrement borrow count, consume borrow |
 | `ward_read(borrow, i)` | Read byte at offset `i` from borrow |
-| `ward_arr_init<a>(own, n)` | `ward_own(l, bytes) → ward_arr(a, l, n)` |
+| `ward_borrow_split(frozen, borrow, m)` | Split borrow into two sub-borrows (count +1) |
+| `ward_borrow_join(frozen, left, right)` | Rejoin sub-borrows (count -1) |
+| `ward_arr_alloc<a>(n)` | `{n:pos} → [l:agz] ward_arr(a, l, n)` |
 | `ward_arr_get<a>(arr, i)` | Read element `i`, `{i < n}` |
 | `ward_arr_set<a>(arr, i, v)` | Write element `i`, `{i < n}` |
-| `ward_arr_fini<a>(arr)` | `ward_arr(a, l, n) → ward_own(l, n)` |
+| `ward_arr_free<a>(arr)` | `ward_arr(a, l, n) → void` |
 | `ward_arr_freeze<a>(arr)` | Freeze typed array for shared reading |
 | `ward_arr_thaw<a>(frozen)` | Thaw back to mutable, requires 0 borrows |
 | `ward_arr_dup<a>(frozen, borrow)` | Increment typed borrow count |
