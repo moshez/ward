@@ -10,19 +10,17 @@ staload _ = "./memory.dats"
 extern fun ward_test_raw (): int = "mac#"
 implement ward_test_raw () = let
   (* Allocate 40 bytes *)
-  val raw = sized_malloc (40)
-  val rp = raw_ptr (raw)
+  val own = ward_malloc (40)
 
   (* Split into 16 + 24 *)
-  val @(head, tail) = raw_advance (raw, 16)
+  val @(head, tail) = ward_split (own, 16)
 
   (* Memset the head to 0xAA *)
-  val hp = raw_ptr (head)
-  val () = safe_memset (head, hp, 170, 16)
+  val () = ward_memset (head, 170, 16)
 
   (* Rejoin and free *)
-  val whole = raw_rejoin (head, tail)
-  val () = sized_free (whole)
+  val whole = ward_join (head, tail)
+  val () = ward_free (whole)
 in
   1 (* success *)
 end
@@ -30,23 +28,21 @@ end
 (* === Export: exercise layers 4 (borrow protocol) === *)
 extern fun ward_test_borrow (): int = "mac#"
 implement ward_test_borrow () = let
-  val raw = sized_malloc (16)
-  val rp = raw_ptr (raw)
-  val () = safe_memset (raw, rp, 42, 1)
+  val own = ward_malloc (16)
+  val () = ward_memset (own, 42, 1)
 
   (* Freeze *)
-  val @(frozen, borrow1) = raw_freeze (raw)
-  val bp = raw_borrow_ptr (borrow1)
-  val v = raw_borrow_read (borrow1, bp, 0)
+  val @(frozen, borrow1) = ward_freeze (own)
+  val v = ward_read (borrow1, 0)
 
-  (* Clone + return both *)
-  val borrow2 = raw_borrow_clone (frozen, borrow1)
-  val () = raw_borrow_return (frozen, borrow1)
-  val () = raw_borrow_return (frozen, borrow2)
+  (* Dup + drop both *)
+  val borrow2 = ward_dup (frozen, borrow1)
+  val () = ward_drop (frozen, borrow1)
+  val () = ward_drop (frozen, borrow2)
 
   (* Thaw + free *)
-  val raw = raw_thaw (frozen)
-  val () = sized_free (raw)
+  val own = ward_thaw (frozen)
+  val () = ward_free (own)
 in
   v (* return the byte we read *)
 end
@@ -54,30 +50,26 @@ end
 (* === Export: exercise layers 5-6 (typed arrays + borrows) === *)
 extern fun ward_test_typed (): int = "mac#"
 implement ward_test_typed () = let
-  val raw = sized_malloc (40)
-  val rp = raw_ptr (raw)
-  val tp = tptr_init<int> (raw, rp, 10)
-  val tpp = tptr_ptr<int> (tp)
+  val own = ward_malloc (40)
+  val arr = ward_arr_init<int> (own, 10)
 
   (* Write and read *)
-  val () = tptr_set<int> (tp, tpp, 5, 42)
-  val v1 = tptr_get<int> (tp, tpp, 5)
+  val () = ward_arr_set<int> (arr, 5, 42)
+  val v1 = ward_arr_get<int> (arr, 5)
 
   (* Freeze and read through borrow *)
-  val @(frozen, borrow1) = tptr_freeze<int> (tp)
-  val bp = tptr_borrow_getptr<int> (borrow1)
-  val v2 = tptr_borrow_get<int> (borrow1, bp, 5)
+  val @(frozen, borrow1) = ward_arr_freeze<int> (arr)
+  val v2 = ward_arr_read<int> (borrow1, 5)
 
-  (* Return borrow, thaw, write *)
-  val () = tptr_borrow_return<int> (frozen, borrow1)
-  val tp2 = tptr_thaw<int> (frozen)
-  val tpp2 = tptr_ptr<int> (tp2)
-  val () = tptr_set<int> (tp2, tpp2, 5, 99)
-  val v3 = tptr_get<int> (tp2, tpp2, 5)
+  (* Drop borrow, thaw, write *)
+  val () = ward_arr_drop<int> (frozen, borrow1)
+  val arr2 = ward_arr_thaw<int> (frozen)
+  val () = ward_arr_set<int> (arr2, 5, 99)
+  val v3 = ward_arr_get<int> (arr2, 5)
 
   (* Cleanup *)
-  val raw_back = tptr_dissolve<int> (tp2)
-  val () = sized_free (raw_back)
+  val own_back = ward_arr_fini<int> (arr2)
+  val () = ward_free (own_back)
 in
   v1 + v2 + v3 (* 42 + 42 + 99 = 183 *)
 end

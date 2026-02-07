@@ -5,9 +5,9 @@
 staload "./../memory.sats"
 
 fun bad (): void = let
-  val raw = sized_malloc (16)
-  val @(frozen, borrow) = raw_freeze (raw)
+  val own = ward_malloc (16)
+  val @(frozen, borrow) = ward_freeze (own)
   (* thaw requires borrow count == 0, but we still have borrow *)
-  val raw2 = raw_thaw (frozen)
-  val () = sized_free (raw2)
+  val own2 = ward_thaw (frozen)
+  val () = ward_free (own2)
 in end

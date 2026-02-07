@@ -6,12 +6,10 @@ staload "./../memory.sats"
 staload _ = "./../memory.dats"
 
 fun bad (): void = let
-  val raw = sized_malloc (40)
-  val rp = raw_ptr (raw)
-  val tp = tptr_init<int> (raw, rp, 10)
-  val tpp = tptr_ptr<int> (tp)
+  val own = ward_malloc (40)
+  val arr = ward_arr_init<int> (own, 10)
   (* index 10 with array of length 10 — i < n violated *)
-  val v = tptr_get<int> (tp, tpp, 10)
-  val raw_back = tptr_dissolve<int> (tp)
-  val () = sized_free (raw_back)
+  val v = ward_arr_get<int> (arr, 10)
+  val own_back = ward_arr_fini<int> (arr)
+  val () = ward_free (own_back)
 in end

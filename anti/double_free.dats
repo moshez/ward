@@ -5,7 +5,7 @@
 staload "./../memory.sats"
 
 fun bad (): void = let
-  val raw = sized_malloc (16)
-  val () = sized_free (raw)
-  val () = sized_free (raw)
+  val own = ward_malloc (16)
+  val () = ward_free (own)
+  val () = ward_free (own)
 in end

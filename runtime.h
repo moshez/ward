@@ -176,12 +176,12 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 /* === Ward-specific === */
 
 /* Ward viewtypes are all pointers at runtime */
-#define raw_own(...) atstype_ptrk
-#define raw_frozen(...) atstype_ptrk
-#define raw_borrow(...) atstype_ptrk
-#define tptr(...) atstype_ptrk
-#define tptr_frozen(...) atstype_ptrk
-#define tptr_borrow(...) atstype_ptrk
+#define ward_own(...) atstype_ptrk
+#define ward_frozen(...) atstype_ptrk
+#define ward_borrow(...) atstype_ptrk
+#define ward_arr(...) atstype_ptrk
+#define ward_arr_frozen(...) atstype_ptrk
+#define ward_arr_borrow(...) atstype_ptrk
 
 /* Byte-level pointer arithmetic */
 #define ward_ptr_add(p, n) ((void*)((char*)(p) + (n)))

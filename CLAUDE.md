@@ -22,16 +22,54 @@ make clean        # Remove build/
 Six-layer memory safety system (see DESIGN.md):
 
 ```
-Layer 6: tptr_borrow    — typed read-only shared access
-Layer 5: tptr           — typed, bounds-checked, linear arrays
-Layer 4: raw_borrow     — read views with counted freeze/thaw
-Layer 3: safe_memcpy/set — size-proven memory operations
-Layer 2: raw_advance    — pointer arithmetic with size tracking
-Layer 1: raw_own        — sized linear memory ownership
-Layer 0: malloc/free    — the unsafe world (never exposed)
+Layer 6: ward_arr_borrow  — typed read-only shared access
+Layer 5: ward_arr         — typed, bounds-checked, linear arrays
+Layer 4: ward_borrow      — read views with counted freeze/thaw
+Layer 3: ward_memcpy/set  — size-proven memory operations
+Layer 2: ward_split/join  — pointer arithmetic with size tracking
+Layer 1: ward_own         — sized linear memory ownership
+Layer 0: malloc/free      — the unsafe world (never exposed)
 ```
 
-All proofs are erased at runtime — zero overhead.
+All functions prefixed `ward_` for easy auditing. No raw pointer extraction — safety guarantees are inescapable. All proofs are erased at runtime — zero overhead.
+
+## API
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `ward_own(l, n)` | Owned memory block at address `l`, `n` bytes |
+| `ward_frozen(l, n, k)` | Frozen (immutable) memory, `k` outstanding borrows |
+| `ward_borrow(l, n)` | Read-only borrow of frozen memory |
+| `ward_arr(a, l, n)` | Typed array of `n` elements of type `a` |
+| `ward_arr_frozen(a, l, n, k)` | Frozen typed array, `k` outstanding borrows |
+| `ward_arr_borrow(a, l, n)` | Read-only borrow of typed array |
+
+### Functions
+
+| Function | Signature |
+|----------|-----------|
+| `ward_malloc(n)` | `{n:pos} → [l:agz] ward_own(l, n)` |
+| `ward_free(own)` | `ward_own(l, n) → void` |
+| `ward_split(own, m)` | `ward_own(l, n) → @(ward_own(l, m), ward_own(l+m, n-m))` |
+| `ward_join(left, right)` | `@(ward_own(l, n), ward_own(l+n, m)) → ward_own(l, n+m)` |
+| `ward_memset(own, c, n)` | `!ward_own(l, cap), {n <= cap} → void` |
+| `ward_memcpy(dst, src, n)` | `!ward_own(ld, dcap), !ward_own(ls, scap), {n <= dcap; n <= scap} → void` |
+| `ward_freeze(own)` | `ward_own(l, n) → @(ward_frozen(l, n, 1), ward_borrow(l, n))` |
+| `ward_thaw(frozen)` | `ward_frozen(l, n, 0) → ward_own(l, n)` |
+| `ward_dup(frozen, borrow)` | Increment borrow count, return new borrow |
+| `ward_drop(frozen, borrow)` | Decrement borrow count, consume borrow |
+| `ward_read(borrow, i)` | Read byte at offset `i` from borrow |
+| `ward_arr_init<a>(own, n)` | `ward_own(l, bytes) → ward_arr(a, l, n)` |
+| `ward_arr_get<a>(arr, i)` | Read element `i`, `{i < n}` |
+| `ward_arr_set<a>(arr, i, v)` | Write element `i`, `{i < n}` |
+| `ward_arr_fini<a>(arr)` | `ward_arr(a, l, n) → ward_own(l, n)` |
+| `ward_arr_freeze<a>(arr)` | Freeze typed array for shared reading |
+| `ward_arr_thaw<a>(frozen)` | Thaw back to mutable, requires 0 borrows |
+| `ward_arr_dup<a>(frozen, borrow)` | Increment typed borrow count |
+| `ward_arr_drop<a>(frozen, borrow)` | Decrement typed borrow count |
+| `ward_arr_read<a>(borrow, i)` | Read element `i` through typed borrow |
 
 ## Files
 
@@ -47,22 +85,26 @@ All proofs are erased at runtime — zero overhead.
 
 ## Key ATS2 Patterns
 
+### No raw pointer extraction
+
+There is no way to recover a `ptr l` from any ward type. All memory operations take the proof directly — the pointer is hidden inside. This means safety guarantees cannot be circumvented.
+
 ### Linear types as ownership
 
-All ward types (`raw_own`, `tptr`, etc.) are `absvtype` — linear types that must be consumed exactly once. At runtime they are all erased to `ptr`. The type system enforces:
+All ward types are `absvtype` — linear types that must be consumed exactly once. At runtime they are all erased to `ptr`. The type system enforces:
 
-- `sized_free` **consumes** `raw_own` — can't use after free
-- `raw_advance` **consumes** one `raw_own`, **produces** two — no double-free
-- `raw_freeze` **consumes** `raw_own`, **produces** `raw_frozen` + `raw_borrow` — no write during shared read
-- `raw_thaw` requires `raw_frozen(l, n, 0)` — can't thaw with outstanding borrows
+- `ward_free` **consumes** `ward_own` — can't use after free
+- `ward_split` **consumes** one `ward_own`, **produces** two — no double-free
+- `ward_freeze` **consumes** `ward_own`, **produces** `ward_frozen` + `ward_borrow` — no write during shared read
+- `ward_thaw` requires `ward_frozen(l, n, 0)` — can't thaw with outstanding borrows
 
 ### Dependent types as bounds
 
-Array indices carry static constraints: `{i:nat | i < n}` means the index is proven in-bounds at compile time. Buffer sizes are tracked: `raw_own(l, n)` knows it owns `n` bytes. `safe_memset` requires `{n <= cap}`.
+Array indices carry static constraints: `{i:nat | i < n}` means the index is proven in-bounds at compile time. Buffer sizes are tracked: `ward_own(l, n)` knows it owns `n` bytes. `ward_memset` requires `{n <= cap}`.
 
 ### Template functions
 
-Typed operations (`tptr_get<int>`, `tptr_set<int>`, etc.) are ATS2 templates. Any file using them must include:
+Typed operations (`ward_arr_get<int>`, `ward_arr_set<int>`, etc.) are ATS2 templates. Any file using them must include:
 
 ```ats
 staload _ = "./memory.dats"  (* template resolution *)

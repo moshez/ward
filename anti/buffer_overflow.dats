@@ -5,9 +5,8 @@
 staload "./../memory.sats"
 
 fun bad (): void = let
-  val raw = sized_malloc (16)
-  val p = raw_ptr (raw)
+  val own = ward_malloc (16)
   (* 32 > 16 — constraint n <= cap is violated *)
-  val () = safe_memset (raw, p, 0, 32)
-  val () = sized_free (raw)
+  val () = ward_memset (own, 0, 32)
+  val () = ward_free (own)
 in end

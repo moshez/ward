@@ -5,6 +5,6 @@
 staload "./../memory.sats"
 
 fun bad (): void = let
-  val raw = sized_malloc (16)
-  (* raw is never freed — linear type error *)
+  val own = ward_malloc (16)
+  (* own is never freed — linear type error *)
 in end
