@@ -3,10 +3,13 @@
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
 staload "./dom.sats"
+staload "./promise.sats"
 dynload "./memory.dats"
 dynload "./dom.dats"
+dynload "./promise.dats"
 staload _ = "./memory.dats"
 staload _ = "./dom.dats"
+staload _ = "./promise.dats"
 
 implement main0 () = let
 
@@ -156,6 +159,19 @@ implement main0 () = let
 
   val () = ward_dom_fini(dom)
   val () = println! ("dom state freed")
+
+  (* === Promises: pre-resolved + extract === *)
+  val () = println! ("\n=== Promises: pre-resolved + extract ===")
+  val p = ward_promise_resolved<int> (42)
+  val v = ward_promise_extract<int> (p)
+  val () = println! ("pre-resolved = ", v)
+
+  (* === Promises: create / resolve / discard === *)
+  val () = println! ("\n=== Promises: create / resolve / discard ===")
+  val @(p, r) = ward_promise_create<int> ()
+  val () = ward_promise_resolve<int> (r, 99)
+  val () = ward_promise_discard<int><Pending> (p)
+  val () = println! ("resolved and discarded")
 
   val () = println! ("\n=== All operations exercised successfully ===")
 

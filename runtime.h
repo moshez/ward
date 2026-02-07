@@ -192,6 +192,25 @@ void free(void *ptr);
 void *memset(void *s, int c, unsigned int n);
 void *memcpy(void *dst, const void *src, unsigned int n);
 
+/* Promise types */
+#define ward_promise(...) atstype_ptrk
+#define ward_promise_resolver(...) atstype_ptrk
+
+/* Pointer-sized slot access (for promise struct) */
+static inline void *ward_slot_get(void *p, int i) {
+  return ((void**)p)[i];
+}
+static inline void ward_slot_set(void *p, int i, void *v) {
+  ((void**)p)[i] = v;
+}
+
+/* Invoke a cloref1 closure: first word is function pointer */
+static inline void *ward_cloref1_invoke(void *clo, void *arg) {
+  typedef void *(*cfun)(void *clo, void *arg);
+  cfun fp = *(cfun*)clo;
+  return fp(clo, arg);
+}
+
 /* DOM helpers */
 #define ward_dom_state(...) atstype_ptrk
 static inline void ward_set_byte(void *p, int off, int v) {

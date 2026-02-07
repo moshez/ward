@@ -41,16 +41,19 @@ build/memory_dats.c: memory.dats memory.sats | build
 build/dom_dats.c: dom.dats dom.sats memory.sats memory.dats | build
 	$(PATSOPT) -o $@ -d $<
 
-build/exerciser_dats.c: exerciser.dats memory.sats memory.dats dom.sats dom.dats | build
+build/promise_dats.c: promise.dats promise.sats memory.sats memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+build/exerciser_dats.c: exerciser.dats memory.sats memory.dats dom.sats dom.dats promise.sats promise.dats | build
 	$(PATSOPT) -o $@ -d $<
 
 build/wasm_exerciser_dats.c: wasm_exerciser.dats memory.sats memory.dats dom.sats dom.dats | build
 	$(PATSOPT) -o $@ -d $<
 
 # --- Native exerciser (links with libc) ---
-build/exerciser: build/memory_dats.c build/dom_dats.c build/exerciser_dats.c ward_prelude.h | build
+build/exerciser: build/memory_dats.c build/dom_dats.c build/promise_dats.c build/exerciser_dats.c ward_prelude.h | build
 	$(CC) $(CFLAGS_ATS) -include $(WARD_DIR)ward_prelude.h \
-	  -o $@ build/memory_dats.c build/dom_dats.c build/exerciser_dats.c
+	  -o $@ build/memory_dats.c build/dom_dats.c build/promise_dats.c build/exerciser_dats.c
 
 exerciser: build/exerciser
 	@echo "==> Running exerciser"
@@ -63,13 +66,16 @@ build/memory_dats.o: build/memory_dats.c runtime.h | build
 build/dom_dats.o: build/dom_dats.c runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
+build/promise_dats.o: build/promise_dats.c runtime.h | build
+	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
+
 build/wasm_exerciser_dats.o: build/wasm_exerciser_dats.c runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
 build/runtime.o: runtime.c runtime.h | build
 	$(CLANG) $(WASM_CFLAGS) -c -o $@ $<
 
-build/ward.wasm: build/memory_dats.o build/dom_dats.o build/wasm_exerciser_dats.o build/runtime.o
+build/ward.wasm: build/memory_dats.o build/dom_dats.o build/promise_dats.o build/wasm_exerciser_dats.o build/runtime.o
 	$(WASM_LD) $(WASM_LDFLAGS) -o $@ $^
 
 wasm: build/ward.wasm
