@@ -1,12 +1,15 @@
-(* ANTI-EXERCISER: buffer overflow *)
-(* This MUST fail to compile — memset size exceeds buffer capacity *)
+(* ANTI-EXERCISER: buffer overflow via split *)
+(* This MUST fail to compile — access beyond split boundary *)
 
 #include "share/atspre_staload.hats"
 staload "./../memory.sats"
+staload _ = "./../memory.dats"
 
 fun bad (): void = let
-  val own = ward_malloc (16)
-  (* 32 > 16 — constraint n <= cap is violated *)
-  val () = ward_memset (own, 0, 32)
-  val () = ward_free (own)
+  val arr = ward_arr_alloc<byte> (16)
+  val @(head, tail) = ward_arr_split<byte> (arr, 8)
+  (* head has 8 elements — index 8 is out of bounds (i < n violated) *)
+  val v = ward_arr_get<byte> (head, 8)
+  val whole = ward_arr_join<byte> (head, tail)
+  val () = ward_arr_free<byte> (whole)
 in end

@@ -174,27 +174,39 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_add_ptr0_bsz(p, n) ((void*)((char*)(p) + (n)))
 #define atspre_g1int2int_int_int(x) (x)
 #define atspre_g1int_lt_int(x, y) ((x) < (y))
+#define atspre_g1int_add_int(x, y) ((x) + (y))
+#define atspre_char2int1(c) ((int)(c))
 
 /* === Ward-specific === */
 
 /* Ward viewtypes are all pointers at runtime */
-#define ward_own(...) atstype_ptrk
-#define ward_frozen(...) atstype_ptrk
-#define ward_borrow(...) atstype_ptrk
 #define ward_arr(...) atstype_ptrk
 #define ward_arr_frozen(...) atstype_ptrk
 #define ward_arr_borrow(...) atstype_ptrk
-
-/* Byte-level pointer arithmetic */
-#define ward_ptr_add(p, n) ((void*)((char*)(p) + (n)))
-
-/* Read a single byte as int */
-#define ward_read_byte(p) ((int)(*(unsigned char*)(p)))
+#define ward_safe_text(...) atstype_ptrk
+#define ward_text_builder(...) atstype_ptrk
 
 /* Memory operations (implemented in runtime.c) */
 void *malloc(int size);
 void free(void *ptr);
 void *memset(void *s, int c, unsigned int n);
 void *memcpy(void *dst, const void *src, unsigned int n);
+
+/* DOM helpers */
+#define ward_dom_state(...) atstype_ptrk
+static inline void ward_set_byte(void *p, int off, int v) {
+  ((unsigned char*)p)[off] = (unsigned char)v;
+}
+static inline void ward_set_i32(void *p, int off, int v) {
+  unsigned char *d = (unsigned char*)p + off;
+  d[0] = v & 0xFF; d[1] = (v >> 8) & 0xFF;
+  d[2] = (v >> 16) & 0xFF; d[3] = (v >> 24) & 0xFF;
+}
+static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
+  memcpy((char*)dst + off, src, n);
+}
+static inline void ward_dom_flush(void *buf, int len) {
+  /* stub — in WASM, this calls the JS bridge */
+}
 
 #endif /* WARD_RUNTIME_H */

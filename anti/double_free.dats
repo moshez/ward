@@ -3,9 +3,10 @@
 
 #include "share/atspre_staload.hats"
 staload "./../memory.sats"
+staload _ = "./../memory.dats"
 
 fun bad (): void = let
-  val own = ward_malloc (16)
-  val () = ward_free (own)
-  val () = ward_free (own)
+  val arr = ward_arr_alloc<byte> (16)
+  val () = ward_arr_free<byte> (arr)
+  val () = ward_arr_free<byte> (arr)
 in end

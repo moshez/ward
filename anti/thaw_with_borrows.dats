@@ -3,11 +3,12 @@
 
 #include "share/atspre_staload.hats"
 staload "./../memory.sats"
+staload _ = "./../memory.dats"
 
 fun bad (): void = let
-  val own = ward_malloc (16)
-  val @(frozen, borrow) = ward_freeze (own)
+  val arr = ward_arr_alloc<byte> (16)
+  val @(frozen, borrow) = ward_arr_freeze<byte> (arr)
   (* thaw requires borrow count == 0, but we still have borrow *)
-  val own2 = ward_thaw (frozen)
-  val () = ward_free (own2)
+  val arr2 = ward_arr_thaw<byte> (frozen)
+  val () = ward_arr_free<byte> (arr2)
 in end
