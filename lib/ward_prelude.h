@@ -2,6 +2,7 @@
 #ifndef WARD_PRELUDE_H
 #define WARD_PRELUDE_H
 
+#include <stdlib.h>
 #include <string.h>
 
 /* All ward viewtypes are pointers at runtime */
@@ -28,6 +29,65 @@ static inline void *ward_cloref1_invoke(void *clo, void *arg) {
   typedef void *(*cfun)(void *clo, void *arg);
   cfun fp = *(cfun*)clo;
   return fp(clo, arg);
+}
+
+/* Promise chain resolution (monadic bind support).
+   Iteratively resolves a promise and propagates through then-chains.
+   When a callback returns a pending inner promise, wires forwarding. */
+static inline void ward_promise_resolve_chain(void *p, void *v) {
+  void **pp = (void **)p;
+  while (1) {
+    pp[0] = (void*)1;
+    pp[1] = v;
+    void *cb = pp[2];
+    void *chain = pp[3];
+    if (cb && chain) {
+      void *inner = ward_cloref1_invoke(cb, v);
+      void **ip = (void **)inner;
+      if (ip[0]) {
+        v = ip[1];
+        pp = (void **)chain;
+        continue;
+      } else {
+        ip[3] = chain;
+        break;
+      }
+    } else if (chain) {
+      pp = (void **)chain;
+      continue;
+    } else {
+      break;
+    }
+  }
+}
+
+/* Allocate a zeroed promise struct (4 pointer-sized slots) */
+static inline void *ward_promise_alloc(void) {
+  int sz = 4 * sizeof(void*);
+  void *p = malloc(sz);
+  memset(p, 0, sz);
+  return p;
+}
+
+/* Promise then (monadic bind).
+   Handles both pending and already-resolved input promises. */
+static inline void *ward_promise_then_impl(void *p, void *f) {
+  void *chain = ward_promise_alloc();
+  void **pp = (void **)p;
+  if (pp[0]) {
+    void *inner = ward_cloref1_invoke(f, pp[1]);
+    void **ip = (void **)inner;
+    if (ip[0]) {
+      ((void **)chain)[0] = (void*)1;
+      ((void **)chain)[1] = ip[1];
+    } else {
+      ip[3] = chain;
+    }
+  } else {
+    pp[2] = f;
+    pp[3] = chain;
+  }
+  return chain;
 }
 
 /* DOM helpers */

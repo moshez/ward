@@ -28,7 +28,7 @@ WASM_NODE_CFLAGS := $(WASM_CFLAGS) -DWARD_NO_DOM_STUB
 ANTI_SRCS := $(wildcard exerciser/anti/*.dats)
 
 # --- Default target ---
-.PHONY: all clean exerciser wasm anti-exerciser check node-exerciser
+.PHONY: all clean exerciser wasm anti-exerciser check node-exerciser test check-all
 
 all: wasm exerciser
 
@@ -233,12 +233,18 @@ build/node_ward.wasm: $(NODE_WASM_OBJS)
 	  $(NODE_WASM_EXPORTS) \
 	  -o $@ $^
 
-exerciser/node_modules: exerciser/package.json
-	cd exerciser && npm install
+node_modules: package.json
+	npm install
 
-node-exerciser: build/node_ward.wasm exerciser/node_modules
+node-exerciser: build/node_ward.wasm node_modules
 	@echo "==> Running Node DOM exerciser"
-	@cd exerciser && node node_exerciser.mjs
+	@node exerciser/node_exerciser.mjs
+
+test: build/node_ward.wasm node_modules
+	@echo "==> Running bridge tests"
+	@node --test tests/
+
+check-all: check test
 
 clean:
 	rm -rf build

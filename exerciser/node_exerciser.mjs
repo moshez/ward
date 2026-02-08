@@ -4,7 +4,7 @@
 import 'fake-indexeddb/auto';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { loadWard } from './ward_bridge.mjs';
+import { loadWard } from './../lib/ward_bridge.mjs';
 
 const dom = new JSDOM('<!DOCTYPE html><div id="ward-root"></div>');
 const document = dom.window.document;

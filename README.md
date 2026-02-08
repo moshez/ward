@@ -1,230 +1,118 @@
 # Ward
 
-Linear memory safety for ATS2. Ward provides Rust-like guarantees -- no buffer overflow, no use-after-free, no double-free, no mutable aliasing -- through dependent and linear types, compiled to freestanding WASM. All proofs are erased at runtime: zero overhead.
+Linear memory safety for ATS2, compiled to freestanding WASM.
+
+## Overview
+
+Ward provides Rust-like guarantees through dependent and linear types:
+
+- **No buffer overflow** -- array indices are bounds-checked at compile time
+- **No use-after-free** -- linear types enforce single ownership
+- **No double-free** -- consuming a value twice is a type error
+- **No mutable aliasing** -- freeze/thaw protocol prevents shared mutation
+
+All proofs are erased at runtime. Zero overhead.
+
+## Documentation
+
+- [Getting Started](docs/getting-started.md) -- prerequisites, building, project layout
+- [Concepts](docs/concepts.md) -- linear types, dependent types, borrow protocol, safe text, promises
+- [API Reference](docs/api-reference.md) -- complete reference for all types and functions
+- [JS Bridge](docs/bridge.md) -- `loadWard()` API, binary protocol, WASM imports/exports
+- [Examples](docs/examples.md) -- arrays, borrows, DOM, promises, IDB
+- [Architecture](docs/architecture.md) -- build pipeline, safety guarantees, runtime, anti-exerciser
 
 ## Quick start
 
-### Prerequisites
-
 ```bash
-# ATS2 toolchain (no root required)
+# Install ATS2 (no root required)
 curl -sL "https://raw.githubusercontent.com/ats-lang/ats-lang.github.io/master/FROZEN000/ATS-Postiats/ATS2-Postiats-int-0.4.2.tgz" -o /tmp/ats2.tgz
-mkdir -p ~/.ats2
-tar -xzf /tmp/ats2.tgz -C ~/.ats2
-cd ~/.ats2/ATS2-Postiats-int-0.4.2
-make -j$(nproc) -C src/CBOOT patsopt
+mkdir -p ~/.ats2 && tar -xzf /tmp/ats2.tgz -C ~/.ats2
+cd ~/.ats2/ATS2-Postiats-int-0.4.2 && make -j$(nproc) -C src/CBOOT patsopt
 mkdir -p bin && cp src/CBOOT/patsopt bin/patsopt
 
-# WASM toolchain (Ubuntu/Debian)
+# Install WASM toolchain
 sudo apt-get install -y clang lld
+
+# Build and verify
+cd /path/to/ward
+make check
 ```
 
-## Using ward in your project
+## Vendoring
 
-Every file that uses ward must include `staload _ = "...memory.dats"` for template resolution. For DOM operations, also staload `dom.sats`/`dom.dats`. For promises, `promise.sats`/`promise.dats`.
+Ward is designed to be vendored into your project. There is no package registry -- you copy the source.
 
-### Arrays
+```bash
+# Clone and vendor
+git clone https://github.com/moshez/ward.git /tmp/ward
+cd /tmp/ward && echo "$(git rev-parse HEAD)" > WARD_VERSION
+rm -rf .git
+cp -r /tmp/ward vendor/ward/
+
+# Check in to your repo
+git add vendor/ward/
+git commit -m "Vendor ward $(cat vendor/ward/WARD_VERSION)"
+```
+
+To update, repeat the process and diff `WARD_VERSION`.
+
+## Using Ward
+
+### 1. Write ATS2 code
 
 ```ats
 #include "share/atspre_staload.hats"
-staload "path/to/lib/memory.sats"
-staload _ = "path/to/lib/memory.dats"
+staload "vendor/ward/lib/memory.sats"
+staload "vendor/ward/lib/dom.sats"
+staload "vendor/ward/lib/promise.sats"
+staload "vendor/ward/lib/event.sats"
+staload _ = "vendor/ward/lib/memory.dats"
+staload _ = "vendor/ward/lib/dom.dats"
+staload _ = "vendor/ward/lib/promise.dats"
+staload _ = "vendor/ward/lib/event.dats"
 
-fun example (): void = let
-  val arr = ward_arr_alloc<int>(10)
-  val () = ward_arr_set<int>(arr, 5, 42)
-  val v = ward_arr_get<int>(arr, 5)       (* v = 42 *)
-  val () = ward_arr_free<int>(arr)
-in end
-```
+extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
-### Freeze / thaw borrow protocol
-
-Freeze an array to get read-only borrows. The array cannot be mutated or freed until all borrows are dropped and it is thawed.
-
-```ats
-val arr = ward_arr_alloc<int>(10)
-val () = ward_arr_set<int>(arr, 0, 42)
-val @(frozen, borrow) = ward_arr_freeze<int>(arr)
-val v = ward_arr_read<int>(borrow, 0)          (* read through borrow *)
-val () = ward_arr_drop<int>(frozen, borrow)    (* drop borrow *)
-val arr = ward_arr_thaw<int>(frozen)           (* thaw requires 0 borrows *)
-val () = ward_arr_free<int>(arr)
-```
-
-### DOM operations
-
-DOM operations thread a linear `ward_dom_state` through each call. Tag and attribute names must be `ward_safe_text` -- the compiler rejects any character outside `[a-zA-Z0-9-]`, preventing injection at compile time. Content values use `ward_arr_borrow` (read-only shared access). The `style` attribute has a dedicated setter.
-
-```ats
-staload "path/to/lib/dom.sats"
-staload _ = "path/to/lib/dom.dats"
-
-fun dom_example (): void = let
+implement ward_node_init (root_id) = let
   val dom = ward_dom_init()
-
-  (* Tag names are safe text -- compiler rejects unsafe characters *)
-  val b = ward_text_build(3)
-  val b = ward_text_putc(b, 0, char2int1('d'))
-  val b = ward_text_putc(b, 1, char2int1('i'))
-  val b = ward_text_putc(b, 2, char2int1('v'))
-  val tag = ward_text_done(b)
-
-  val dom = ward_dom_create_element(dom, 1, 0, tag, 3)
-
-  (* Attribute names are safe text; values come from borrows *)
-  val b = ward_text_build(2)
-  val b = ward_text_putc(b, 0, char2int1('i'))
-  val b = ward_text_putc(b, 1, char2int1('d'))
-  val attr_name = ward_text_done(b)
-
-  val vbuf = ward_arr_alloc<byte>(4)
-  (* ... fill vbuf with content bytes ... *)
-  val @(frozen, borrow) = ward_arr_freeze<byte>(vbuf)
-  val dom = ward_dom_set_attr(dom, 1, attr_name, 2, borrow, 4)
-  val () = ward_arr_drop<byte>(frozen, borrow)
-  val vbuf = ward_arr_thaw<byte>(frozen)
-  val () = ward_arr_free<byte>(vbuf)
-
-  val dom = ward_dom_remove_children(dom, 1)
+  (* ... build your UI ... *)
   val () = ward_dom_fini(dom)
 in end
 ```
 
-### Promises
+### 2. Compile to WASM
 
-Promises are linear and indexed by state (`Pending` or `Resolved`). The resolver is a separate linear value consumed by `resolve` -- you cannot resolve twice or forget to resolve. No error type parameter; use `Result(a, e)` as your `a` if you need errors.
+```bash
+# ATS2 → C
+patsopt -o build/app_dats.c -d src/app.dats
 
-```ats
-staload "path/to/lib/promise.sats"
-staload _ = "path/to/lib/promise.dats"
+# C → WASM objects (for each module)
+clang --target=wasm32 -O2 -nostdlib -ffreestanding \
+  -Ivendor/ward/exerciser/wasm_stubs -I$PATSHOME -I$PATSHOME/ccomp/runtime \
+  -D_ATS_CCOMP_HEADER_NONE_ -D_ATS_CCOMP_EXCEPTION_NONE_ -D_ATS_CCOMP_PRELUDE_NONE_ \
+  -include vendor/ward/lib/runtime.h \
+  -c -o build/app_dats.o build/app_dats.c
 
-(* Pre-resolved promise: extract immediately *)
-val p = ward_promise_resolved<int>(42)
-val v = ward_promise_extract<int>(p)    (* v = 42 *)
-
-(* Deferred resolution *)
-val @(p, r) = ward_promise_create<int>()
-val () = ward_promise_resolve<int>(r, 99)   (* consumes resolver *)
-val () = ward_promise_discard<int><Pending>(p)
-
-(* Chaining -- consumes the input promise *)
-val @(p, r) = ward_promise_create<int>()
-val p2 = ward_promise_then<int><int>(p, lam (x) => x + 1)
-val () = ward_promise_resolve<int>(r, 10)   (* triggers callback, resolves p2 *)
-val () = ward_promise_discard<int><Pending>(p2)
+# Link
+wasm-ld --no-entry --allow-undefined \
+  --export=ward_node_init --export=ward_timer_fire --export=malloc \
+  -z stack-size=65536 --initial-memory=1048576 \
+  -o build/app.wasm build/app_dats.o build/memory_dats.o build/dom_dats.o ...
 ```
 
-## API
-
-### Memory types
-
-| Type | Description |
-|------|-------------|
-| `ward_arr(a, l, n)` | Typed array: `n` elements of type `a` at address `l` |
-| `ward_arr_frozen(a, l, n, k)` | Frozen array, `k` outstanding borrows |
-| `ward_arr_borrow(a, l, n)` | Read-only borrow of typed array |
-| `ward_safe_text(n)` | Read-only text, `n` bytes, compile-time character verified |
-| `ward_text_builder(n, filled)` | Linear builder for safe text construction |
-
-### Memory functions
-
-| Function | What it does |
-|----------|-------------|
-| `ward_arr_alloc<a>(n)` | Allocate array of `n` elements |
-| `ward_arr_free<a>(arr)` | Free array (consumes it) |
-| `ward_arr_get<a>(arr, i)` | Read element `i` (bounds-checked) |
-| `ward_arr_set<a>(arr, i, v)` | Write element `i` (bounds-checked) |
-| `ward_arr_split<a>(arr, m)` | Split into two arrays at index `m` |
-| `ward_arr_join<a>(left, right)` | Rejoin adjacent arrays |
-| `ward_arr_freeze<a>(arr)` | Freeze: returns `(frozen, borrow)` |
-| `ward_arr_thaw<a>(frozen)` | Thaw: requires 0 outstanding borrows |
-| `ward_arr_dup<a>(frozen, borrow)` | Duplicate borrow (count +1) |
-| `ward_arr_drop<a>(frozen, borrow)` | Drop borrow (count -1) |
-| `ward_arr_read<a>(borrow, i)` | Read through borrow (bounds-checked) |
-| `ward_arr_borrow_split<a>(frozen, borrow, m)` | Split borrow into sub-borrows |
-| `ward_arr_borrow_join<a>(frozen, left, right)` | Rejoin sub-borrows |
-| `ward_text_build(n)` | Start building safe text of length `n` |
-| `ward_text_putc(b, i, c)` | Put character `c` at position `i` (must satisfy `SAFE_CHAR`) |
-| `ward_text_done(b)` | Finish building (must have written all `n` positions) |
-| `ward_safe_text_get(t, i)` | Read byte `i` from safe text |
-
-### Promise types
-
-| Type | Description |
-|------|-------------|
-| `ward_promise(a, s)` | Linear promise indexed by state (`Pending` or `Resolved`) |
-| `ward_promise_resolver(a)` | Linear write-end, consumed by `resolve` |
-
-No error type parameter. If you want errors, use `Result(a, e)` as your `a`.
-
-### Promise functions
-
-| Function | What it does |
-|----------|-------------|
-| `ward_promise_create<a>()` | Returns `(pending_promise, resolver)` pair |
-| `ward_promise_resolved<a>(v)` | Create an already-resolved promise |
-| `ward_promise_resolve<a>(r, v)` | Resolve (consumes the resolver) |
-| `ward_promise_extract<a>(p)` | Extract value (requires `Resolved`) |
-| `ward_promise_discard<a>(p)` | Explicitly discard any promise |
-| `ward_promise_then<a><b>(p, f)` | Chain callback (consumes promise, returns new one) |
-
-### DOM types
-
-| Type | Description |
-|------|-------------|
-| `ward_dom_state(l)` | Linear DOM diff buffer at address `l` |
-
-### DOM functions
-
-All DOM operations consume and return `ward_dom_state` (linear threading). Tag and attribute names require `ward_safe_text`; content values require `!ward_arr_borrow` (borrowed, not consumed).
-
-| Function | What it does |
-|----------|-------------|
-| `ward_dom_init()` | Allocate DOM diff buffer |
-| `ward_dom_fini(state)` | Free DOM diff buffer (consumes it) |
-| `ward_dom_create_element(state, node_id, parent_id, tag, tag_len)` | Create element (tag must be safe text) |
-| `ward_dom_set_text(state, node_id, text, text_len)` | Set text content (from borrow) |
-| `ward_dom_set_attr(state, node_id, attr_name, name_len, value, value_len)` | Set attribute (name must be safe text, value from borrow) |
-| `ward_dom_set_style(state, node_id, value, value_len)` | Set style (dedicated setter -- value from borrow) |
-| `ward_dom_remove_children(state, node_id)` | Remove all children of a node |
-
-## Browser usage
-
-Ward compiles to freestanding WASM. The JS bridge (`exerciser/ward_bridge.mjs`) connects it to any DOM -- browser or jsdom. It has no Node.js dependencies.
+### 3. Wire the JS bridge
 
 ```html
-<div id="ward-root"></div>
+<div id="root"></div>
 <script type="module">
-  import { loadWard } from './ward_bridge.mjs';
+  import { loadWard } from './vendor/ward/lib/ward_bridge.mjs';
 
-  const root = document.getElementById('ward-root');
-  const wasm = await (await fetch('node_ward.wasm')).arrayBuffer();
+  const root = document.getElementById('root');
+  const wasm = await (await fetch('app.wasm')).arrayBuffer();
   const { done } = await loadWard(wasm, root);
   await done;
 </script>
 ```
 
-`loadWard(wasmBytes, rootElement)` instantiates the WASM, wires up the DOM bridge under `root`, and calls `ward_node_init`. It returns a `done` promise that resolves when the WASM signals exit.
-
-The bridge provides three WASM imports (via `env`):
-
-| Import | Purpose |
-|--------|---------|
-| `ward_dom_flush(ptr, len)` | Parses the binary diff protocol from WASM memory, applies to DOM |
-| `ward_set_timer(delay, ptr)` | `setTimeout` + calls `ward_timer_fire(ptr)` on expiry |
-| `ward_exit()` | Resolves the `done` promise |
-
-For Node.js testing, `exerciser/node_exerciser.mjs` uses jsdom to provide the document:
-
-```bash
-make node-exerciser   # builds WASM, npm installs jsdom, runs exerciser
-```
-
-## How it works
-
-**Linear types as ownership.** Ward types are `absvtype` -- linear types that must be consumed exactly once. At runtime they erase to `ptr`. The compiler enforces that every array is freed, every promise is handled, every resolver is used.
-
-**Dependent types as bounds.** Array indices carry static constraints: `{i:nat | i < n}` means the index is proven in-bounds at compile time. Buffer sizes are tracked through split/join.
-
-**Datasort as state.** `datasort PromiseState = Pending | Resolved` creates a compile-time-only tag. `extract` only accepts `Resolved`; `then` only accepts `Pending`. The sort is fully erased at runtime.
+See [bridge.md](docs/bridge.md) for the complete API and all WASM imports/exports.
