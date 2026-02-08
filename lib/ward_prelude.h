@@ -52,4 +52,36 @@ static inline void ward_dom_flush(void *buf, int len) {
   /* stub — in WASM, this calls the JS bridge */
 }
 
+/* IDB stash stubs (native build parity with runtime.c) */
+static void *_ward_idb_stash_ptr = 0;
+static int _ward_idb_stash_len = 0;
+static inline void ward_idb_stash_set(void *p, int len) {
+  _ward_idb_stash_ptr = p; _ward_idb_stash_len = len;
+}
+static inline void *ward_idb_stash_get_ptr(void) { return _ward_idb_stash_ptr; }
+
+/* Bridge stash stubs (native build parity with runtime.c) */
+static void *_ward_bridge_stash_ptr = 0;
+static int _ward_bridge_stash_int[4] = {0};
+static inline void ward_bridge_stash_set_ptr(void *p) { _ward_bridge_stash_ptr = p; }
+static inline void *ward_bridge_stash_get_ptr(void) { return _ward_bridge_stash_ptr; }
+static inline void ward_bridge_stash_set_int(int slot, int v) { _ward_bridge_stash_int[slot] = v; }
+static inline int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stash_int[slot]; }
+
+/* Measure stash stubs */
+static int _ward_measure[6] = {0};
+static inline void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; }
+static inline int ward_measure_get(int slot) { return _ward_measure[slot]; }
+
+/* Listener table stubs */
+#define WARD_MAX_LISTENERS 64
+static void *_ward_listener_table[WARD_MAX_LISTENERS] = {0};
+static inline void ward_listener_set(int id, void *cb) {
+  if (id >= 0 && id < WARD_MAX_LISTENERS) _ward_listener_table[id] = cb;
+}
+static inline void *ward_listener_get(int id) {
+  if (id >= 0 && id < WARD_MAX_LISTENERS) return _ward_listener_table[id];
+  return (void*)0;
+}
+
 #endif /* WARD_PRELUDE_H */

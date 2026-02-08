@@ -239,6 +239,7 @@ static inline void ward_set_i32(void *p, int off, int v) {
 static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
   memcpy((char*)dst + off, src, n);
 }
+
 /* Event bridge (WASM imports from JS host) */
 extern void ward_set_timer(int delay_ms, void *resolver_ptr);
 extern void ward_exit(void);
@@ -246,6 +247,72 @@ extern void ward_exit(void);
 /* DOM state persistence (implemented in runtime.c) */
 void ward_dom_global_set(void *p);
 void *ward_dom_global_get(void);
+
+/* IDB stash (implemented in runtime.c) */
+void ward_idb_stash_set(void *p, int len);
+void *ward_idb_stash_get_ptr(void);
+
+/* IDB JS imports */
+extern void ward_idb_js_put(void *key, int key_len, void *val, int val_len, void *resolver);
+extern void ward_idb_js_get(void *key, int key_len, void *resolver);
+extern void ward_idb_js_delete(void *key, int key_len, void *resolver);
+
+/* Bridge stash (implemented in runtime.c) — shared by fetch, file, decompress, notify, listener */
+void ward_bridge_stash_set_ptr(void *p);
+void *ward_bridge_stash_get_ptr(void);
+void ward_bridge_stash_set_int(int slot, int v);
+int ward_bridge_stash_get_int(int slot);
+
+/* Measure stash (implemented in runtime.c) — 6 slots: x, y, w, h, top, left */
+void ward_measure_set(int slot, int v);
+int ward_measure_get(int slot);
+
+/* Listener table (implemented in runtime.c) — max 64 listeners */
+void ward_listener_set(int id, void *cb);
+void *ward_listener_get(int id);
+
+/* Window JS imports */
+extern void ward_js_focus_window(void);
+extern int ward_js_get_visibility_state(void);
+extern void ward_js_log(int level, void *msg, int msg_len);
+
+/* Navigation JS imports */
+extern int ward_js_get_url(void *out, int max_len);
+extern int ward_js_get_url_hash(void *out, int max_len);
+extern void ward_js_set_url_hash(void *hash, int hash_len);
+extern void ward_js_replace_state(void *url, int url_len);
+extern void ward_js_push_state(void *url, int url_len);
+
+/* DOM read JS imports */
+extern int ward_js_measure_node(int node_id);
+extern int ward_js_query_selector(void *selector, int selector_len);
+
+/* Event listener JS imports */
+extern void ward_js_add_event_listener(int node_id, void *event_type, int type_len, int listener_id);
+extern void ward_js_remove_event_listener(int listener_id);
+extern void ward_js_prevent_default(void);
+
+/* Fetch JS imports */
+extern void ward_js_fetch(void *url, int url_len, void *resolver);
+
+/* Clipboard JS imports */
+extern void ward_js_clipboard_write_text(void *text, int text_len, void *resolver);
+
+/* File JS imports */
+extern void ward_js_file_open(int input_node_id, void *resolver);
+extern int ward_js_file_read(int handle, int file_offset, int len, void *out);
+extern void ward_js_file_close(int handle);
+
+/* Decompress JS imports */
+extern void ward_js_decompress(void *data, int data_len, int method, void *resolver);
+extern int ward_js_blob_read(int handle, int blob_offset, int len, void *out);
+extern void ward_js_blob_free(int handle);
+
+/* Notification/Push JS imports */
+extern void ward_js_notification_request_permission(void *resolver);
+extern void ward_js_notification_show(void *title, int title_len);
+extern void ward_js_push_subscribe(void *vapid, int vapid_len, void *resolver);
+extern void ward_js_push_get_subscription(void *resolver);
 
 /* ward_dom_flush: stub by default, WASM import when WARD_NO_DOM_STUB */
 #ifndef WARD_NO_DOM_STUB

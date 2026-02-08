@@ -6,14 +6,44 @@ staload "./../lib/memory.sats"
 staload "./../lib/dom.sats"
 staload "./../lib/promise.sats"
 staload "./../lib/event.sats"
+staload "./../lib/idb.sats"
+staload "./../lib/window.sats"
+staload "./../lib/nav.sats"
+staload "./../lib/dom_read.sats"
+staload "./../lib/listener.sats"
+staload "./../lib/fetch.sats"
+staload "./../lib/clipboard.sats"
+staload "./../lib/file.sats"
+staload "./../lib/decompress.sats"
+staload "./../lib/notify.sats"
 dynload "./../lib/memory.dats"
 dynload "./../lib/dom.dats"
 dynload "./../lib/promise.dats"
 dynload "./../lib/event.dats"
+dynload "./../lib/idb.dats"
+dynload "./../lib/window.dats"
+dynload "./../lib/nav.dats"
+dynload "./../lib/dom_read.dats"
+dynload "./../lib/listener.dats"
+dynload "./../lib/fetch.dats"
+dynload "./../lib/clipboard.dats"
+dynload "./../lib/file.dats"
+dynload "./../lib/decompress.dats"
+dynload "./../lib/notify.dats"
 staload _ = "./../lib/memory.dats"
 staload _ = "./../lib/dom.dats"
 staload _ = "./../lib/promise.dats"
 staload _ = "./../lib/event.dats"
+staload _ = "./../lib/idb.dats"
+staload _ = "./../lib/window.dats"
+staload _ = "./../lib/nav.dats"
+staload _ = "./../lib/dom_read.dats"
+staload _ = "./../lib/listener.dats"
+staload _ = "./../lib/fetch.dats"
+staload _ = "./../lib/clipboard.dats"
+staload _ = "./../lib/file.dats"
+staload _ = "./../lib/decompress.dats"
+staload _ = "./../lib/notify.dats"
 
 (* Helper: build safe text "p" (1 char) *)
 fn make_tag_p (): ward_safe_text(1) = let
@@ -77,12 +107,43 @@ fn make_val_demo (): ward_safe_text(4) = let
   val b = ward_text_putc(b, 3, char2int1('o'))
 in ward_text_done(b) end
 
+(* Helper: build safe text "test-key" (8 chars) *)
+fn make_idb_key (): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('t'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('s'))
+  val b = ward_text_putc(b, 3, char2int1('t'))
+  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 5, char2int1('k'))
+  val b = ward_text_putc(b, 6, char2int1('e'))
+  val b = ward_text_putc(b, 7, char2int1('y'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "ward-init" (9 chars) for log message *)
+fn make_log_msg (): ward_safe_text(9) = let
+  val b = ward_text_build(9)
+  val b = ward_text_putc(b, 0, char2int1('w'))
+  val b = ward_text_putc(b, 1, char2int1('a'))
+  val b = ward_text_putc(b, 2, char2int1('r'))
+  val b = ward_text_putc(b, 3, char2int1('d'))
+  val b = ward_text_putc(b, 4, 45) (* '-' *)
+  val b = ward_text_putc(b, 5, char2int1('i'))
+  val b = ward_text_putc(b, 6, char2int1('n'))
+  val b = ward_text_putc(b, 7, char2int1('i'))
+  val b = ward_text_putc(b, 8, char2int1('t'))
+in ward_text_done(b) end
+
 (* WASM export: called by Node.js to start the exerciser *)
 extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
 implement ward_node_init (root_id) = let
   val dom = ward_dom_init()
   val () = ward_dom_store(dom)
+
+  (* Exercise ward_log — sync, no promise needed *)
+  val log_msg = make_log_msg()
+  val () = ward_log(1, log_msg, 9)
 
   (* Set a 1s timer, then create DOM elements *)
   val p1 = ward_timer_set(1000)
@@ -113,15 +174,60 @@ implement ward_node_init (root_id) = let
 
       val () = ward_dom_store(dom)
 
-      (* Set 5s timer, then clean up and exit *)
-      val p3 = ward_timer_set(5000)
-      val p4 = ward_promise_then<int><int>(p3,
-        lam (x2: int): int =<cloref1> let
-          val dom = ward_dom_load()
-          val () = ward_dom_fini(dom)
-          val () = ward_exit()
+      (* --- IDB exercise: put / get / delete round-trip --- *)
+
+      (* Build value array [72,101,108,108,111] = "Hello" *)
+      val idb_val = ward_arr_alloc<byte>(5)
+      val () = ward_arr_set<byte>(idb_val, 0, ward_int2byte(72))  (* H *)
+      val () = ward_arr_set<byte>(idb_val, 1, ward_int2byte(101)) (* e *)
+      val () = ward_arr_set<byte>(idb_val, 2, ward_int2byte(108)) (* l *)
+      val () = ward_arr_set<byte>(idb_val, 3, ward_int2byte(108)) (* l *)
+      val () = ward_arr_set<byte>(idb_val, 4, ward_int2byte(111)) (* o *)
+
+      (* Freeze, borrow for IDB put, then drop borrow and thaw+free.
+         JS copies bytes synchronously before the async transaction,
+         so the borrow only needs to be valid during the call. *)
+      val @(frozen, borrow) = ward_arr_freeze<byte>(idb_val)
+
+      val idb_key = make_idb_key()
+      val p_put = ward_idb_put(idb_key, 8, borrow, 5)
+
+      (* Drop borrow, thaw, free — all synchronous, before promise fires *)
+      val () = ward_arr_drop<byte>(frozen, borrow)
+      val idb_val2 = ward_arr_thaw<byte>(frozen)
+      val () = ward_arr_free<byte>(idb_val2)
+
+      val p_put2 = ward_promise_then<int><int>(p_put,
+        lam (put_status: int): int =<cloref1> let
+          (* Now get it back *)
+          val idb_key2 = make_idb_key()
+          val p_get = ward_idb_get(idb_key2, 8)
+          val p_get2 = ward_promise_then<int><int>(p_get,
+            lam (got_len: int): int =<cloref1> let
+              (* Retrieve the result buffer — len should be 5 *)
+              val result = ward_idb_get_result(5)
+              val () = ward_arr_free<byte>(result)
+
+              (* Now delete the key *)
+              val idb_key3 = make_idb_key()
+              val p_del = ward_idb_delete(idb_key3, 8)
+              val p_del2 = ward_promise_then<int><int>(p_del,
+                lam (del_status: int): int =<cloref1> let
+                  (* Set 5s timer, then clean up and exit *)
+                  val p3 = ward_timer_set(5000)
+                  val p4 = ward_promise_then<int><int>(p3,
+                    lam (x2: int): int =<cloref1> let
+                      val dom = ward_dom_load()
+                      val () = ward_dom_fini(dom)
+                      val () = ward_exit()
+                    in 0 end)
+                  val () = ward_promise_discard<int><Pending>(p4)
+                in 0 end)
+              val () = ward_promise_discard<int><Pending>(p_del2)
+            in 0 end)
+          val () = ward_promise_discard<int><Pending>(p_get2)
         in 0 end)
-      val () = ward_promise_discard<int><Pending>(p4)
+      val () = ward_promise_discard<int><Pending>(p_put2)
     in 0 end)
   val () = ward_promise_discard<int><Pending>(p2)
 in end
