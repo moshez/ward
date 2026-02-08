@@ -1,0 +1,127 @@
+(* dom_exerciser.dats — WASM entry point for Node.js DOM exerciser *)
+(* Pure safe ATS2: no $UNSAFE, no %{}, no praxi. *)
+
+#include "share/atspre_staload.hats"
+staload "./../lib/memory.sats"
+staload "./../lib/dom.sats"
+staload "./../lib/promise.sats"
+staload "./../lib/event.sats"
+dynload "./../lib/memory.dats"
+dynload "./../lib/dom.dats"
+dynload "./../lib/promise.dats"
+dynload "./../lib/event.dats"
+staload _ = "./../lib/memory.dats"
+staload _ = "./../lib/dom.dats"
+staload _ = "./../lib/promise.dats"
+staload _ = "./../lib/event.dats"
+
+(* Helper: build safe text "p" (1 char) *)
+fn make_tag_p (): ward_safe_text(1) = let
+  val b = ward_text_build(1)
+  val b = ward_text_putc(b, 0, char2int1('p'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "span" (4 chars) *)
+fn make_tag_span (): ward_safe_text(4) = let
+  val b = ward_text_build(4)
+  val b = ward_text_putc(b, 0, char2int1('s'))
+  val b = ward_text_putc(b, 1, char2int1('p'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('n'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "hello-ward" (10 chars) *)
+fn make_text_hello (): ward_safe_text(10) = let
+  val b = ward_text_build(10)
+  val b = ward_text_putc(b, 0, char2int1('h'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('l'))
+  val b = ward_text_putc(b, 3, char2int1('l'))
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, 45) (* '-' *)
+  val b = ward_text_putc(b, 6, char2int1('w'))
+  val b = ward_text_putc(b, 7, char2int1('a'))
+  val b = ward_text_putc(b, 8, char2int1('r'))
+  val b = ward_text_putc(b, 9, char2int1('d'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "it-works" (8 chars) *)
+fn make_text_works (): ward_safe_text(8) = let
+  val b = ward_text_build(8)
+  val b = ward_text_putc(b, 0, char2int1('i'))
+  val b = ward_text_putc(b, 1, char2int1('t'))
+  val b = ward_text_putc(b, 2, 45) (* '-' *)
+  val b = ward_text_putc(b, 3, char2int1('w'))
+  val b = ward_text_putc(b, 4, char2int1('o'))
+  val b = ward_text_putc(b, 5, char2int1('r'))
+  val b = ward_text_putc(b, 6, char2int1('k'))
+  val b = ward_text_putc(b, 7, char2int1('s'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "class" (5 chars) *)
+fn make_attr_class (): ward_safe_text(5) = let
+  val b = ward_text_build(5)
+  val b = ward_text_putc(b, 0, char2int1('c'))
+  val b = ward_text_putc(b, 1, char2int1('l'))
+  val b = ward_text_putc(b, 2, char2int1('a'))
+  val b = ward_text_putc(b, 3, char2int1('s'))
+  val b = ward_text_putc(b, 4, char2int1('s'))
+in ward_text_done(b) end
+
+(* Helper: build safe text "demo" (4 chars) *)
+fn make_val_demo (): ward_safe_text(4) = let
+  val b = ward_text_build(4)
+  val b = ward_text_putc(b, 0, char2int1('d'))
+  val b = ward_text_putc(b, 1, char2int1('e'))
+  val b = ward_text_putc(b, 2, char2int1('m'))
+  val b = ward_text_putc(b, 3, char2int1('o'))
+in ward_text_done(b) end
+
+(* WASM export: called by Node.js to start the exerciser *)
+extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
+
+implement ward_node_init (root_id) = let
+  val dom = ward_dom_init()
+  val () = ward_dom_store(dom)
+
+  (* Set a 1s timer, then create DOM elements *)
+  val p1 = ward_timer_set(1000)
+  val p2 = ward_promise_then<int><int>(p1,
+    lam (x: int): int =<cloref1> let
+      val dom = ward_dom_load()
+
+      (* Create <p> node 1 under root *)
+      val tag_p = make_tag_p()
+      val dom = ward_dom_create_element(dom, 1, root_id, tag_p, 1)
+
+      (* Set text "hello-ward" on node 1 *)
+      val text_hello = make_text_hello()
+      val dom = ward_dom_set_safe_text(dom, 1, text_hello, 10)
+
+      (* Create <span> node 2 under root *)
+      val tag_span = make_tag_span()
+      val dom = ward_dom_create_element(dom, 2, root_id, tag_span, 4)
+
+      (* Set attr class="demo" on node 2 *)
+      val attr_class = make_attr_class()
+      val val_demo = make_val_demo()
+      val dom = ward_dom_set_attr_safe(dom, 2, attr_class, 5, val_demo, 4)
+
+      (* Set text "it-works" on node 2 *)
+      val text_works = make_text_works()
+      val dom = ward_dom_set_safe_text(dom, 2, text_works, 8)
+
+      val () = ward_dom_store(dom)
+
+      (* Set 5s timer, then clean up and exit *)
+      val p3 = ward_timer_set(5000)
+      val p4 = ward_promise_then<int><int>(p3,
+        lam (x2: int): int =<cloref1> let
+          val dom = ward_dom_load()
+          val () = ward_dom_fini(dom)
+          val () = ward_exit()
+        in 0 end)
+      val () = ward_promise_discard<int><Pending>(p4)
+    in 0 end)
+  val () = ward_promise_discard<int><Pending>(p2)
+in end

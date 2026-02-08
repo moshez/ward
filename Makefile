@@ -21,11 +21,14 @@ WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
 WASM_LDFLAGS := --no-entry --export-dynamic \
   -z stack-size=65536 --initial-memory=1048576
 
+# Node WASM flags (ward_dom_flush = WASM import, not stub)
+WASM_NODE_CFLAGS := $(WASM_CFLAGS) -DWARD_NO_DOM_STUB
+
 # Anti-exerciser files (must all FAIL to compile)
 ANTI_SRCS := $(wildcard exerciser/anti/*.dats)
 
 # --- Default target ---
-.PHONY: all clean exerciser wasm anti-exerciser check
+.PHONY: all clean exerciser wasm anti-exerciser check node-exerciser
 
 all: wasm exerciser
 
@@ -96,6 +99,48 @@ anti-exerciser:
 	done; \
 	echo "==> $$pass rejected, $$fail unexpectedly compiled"; \
 	test $$fail -eq 0
+
+# --- Node DOM exerciser ---
+
+# ATS2 -> C for event module
+build/event_dats.c: lib/event.dats lib/event.sats lib/promise.sats lib/memory.sats lib/memory.dats lib/promise.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for dom_exerciser
+build/dom_exerciser_dats.c: exerciser/dom_exerciser.dats lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats lib/promise.sats lib/promise.dats lib/event.sats lib/event.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# Recompile dom for node (ward_dom_flush = WASM import, not stub)
+build/dom_node_dats.o: build/dom_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/event_dats.o: build/event_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/dom_exerciser_dats.o: build/dom_exerciser_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+# Recompile memory + promise + runtime for node build
+build/memory_node_dats.o: build/memory_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/promise_node_dats.o: build/promise_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/runtime_node.o: lib/runtime.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/node_ward.wasm: build/memory_node_dats.o build/dom_node_dats.o build/promise_node_dats.o \
+    build/event_dats.o build/dom_exerciser_dats.o build/runtime_node.o
+	$(WASM_LD) $(WASM_LDFLAGS) --allow-undefined \
+	  --export=ward_node_init --export=ward_timer_fire -o $@ $^
+
+exerciser/node_modules: exerciser/package.json
+	cd exerciser && npm install
+
+node-exerciser: build/node_ward.wasm exerciser/node_modules
+	@echo "==> Running Node DOM exerciser"
+	@cd exerciser && node node_exerciser.mjs
 
 clean:
 	rm -rf build

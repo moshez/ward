@@ -176,6 +176,21 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g1int_lt_int(x, y) ((x) < (y))
 #define atspre_g1int_add_int(x, y) ((x) + (y))
 #define atspre_char2int1(c) ((int)(c))
+#define atspre_g0int2int_int_int(x) (x)
+#define atspre_g0int_gt_int(x, y) ((x) > (y))
+
+/* === Closure support (needed for cloref1 lambdas) === */
+
+#define ATS_MALLOC(sz) malloc(sz)
+#define ATS_MFREE(ptr) free(ptr)
+#define ATSINScloptr_make(tmp, sz) (tmp = ATS_MALLOC(sz))
+#define ATSINScloptr_free(tmp) ATS_MFREE(tmp)
+
+#define ATSclosurerize_beg(flab, tenvs, targs, tres)
+#define ATSclosurerize_end()
+#define ATSFCreturn(x) return(x)
+#define ATSFCreturn_void(x) (x); return
+#define ATSPMVcfunlab(knd, flab, env) (flab##__closurerize)env
 
 /* === Ward-specific === */
 
@@ -224,8 +239,21 @@ static inline void ward_set_i32(void *p, int off, int v) {
 static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
   memcpy((char*)dst + off, src, n);
 }
+/* Event bridge (WASM imports from JS host) */
+extern void ward_set_timer(int delay_ms, void *resolver_ptr);
+extern void ward_exit(void);
+
+/* DOM state persistence (implemented in runtime.c) */
+void ward_dom_global_set(void *p);
+void *ward_dom_global_get(void);
+
+/* ward_dom_flush: stub by default, WASM import when WARD_NO_DOM_STUB */
+#ifndef WARD_NO_DOM_STUB
 static inline void ward_dom_flush(void *buf, int len) {
   /* stub — in WASM, this calls the JS bridge */
 }
+#else
+extern void ward_dom_flush(void *buf, int len);
+#endif
 
 #endif /* WARD_RUNTIME_H */

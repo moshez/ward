@@ -148,3 +148,9 @@ fun ward_safe_text_get
   {n,i:nat | i < n}
   (t: ward_safe_text(n), i: int i)
   : byte
+
+(* ============================================================
+   Utility — int to byte conversion (freestanding)
+   ============================================================ *)
+
+fun ward_int2byte(i: int): byte

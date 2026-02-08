@@ -111,4 +111,7 @@ implement
 ward_safe_text_get{n,i}(t, i) =
   $UNSAFE.ptr0_get<byte>(ptr_add<byte>(t, i)) (* [U1] *)
 
+implement
+ward_int2byte(i) = $UNSAFE.cast{byte}(i) (* [U3] *)
+
 end (* local *)

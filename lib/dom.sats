@@ -64,3 +64,28 @@ fun ward_dom_remove_children
   {l:agz}
   (state: ward_dom_state(l), node_id: int)
   : ward_dom_state(l)
+
+(* --- DOM state persistence (for async boundaries) --- *)
+
+fun ward_dom_store
+  {l:agz}
+  (state: ward_dom_state(l))
+  : void
+
+fun ward_dom_load
+  (): [l:agz] ward_dom_state(l)
+
+(* --- Safe text variants (no borrow needed) --- *)
+
+fun ward_dom_set_safe_text
+  {l:agz}{tl:nat | tl + 7 <= WARD_DOM_BUF_CAP}
+  (state: ward_dom_state(l), node_id: int,
+   text: ward_safe_text(tl), text_len: int tl)
+  : ward_dom_state(l)
+
+fun ward_dom_set_attr_safe
+  {l:agz}{nl:pos}{vl:nat | nl + vl + 8 <= WARD_DOM_BUF_CAP}
+  (state: ward_dom_state(l), node_id: int,
+   attr_name: ward_safe_text(nl), name_len: int nl,
+   value: ward_safe_text(vl), value_len: int vl)
+  : ward_dom_state(l)

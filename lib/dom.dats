@@ -123,4 +123,58 @@ ward_dom_remove_children{l}(state, node_id) = let
   val () = _ward_dom_flush(state, 5)
 in state end
 
+(*
+ * [U3] ward_dom_store / ward_dom_load:
+ *   Erases/recovers ward_dom_state to/from ptr via global storage.
+ *   Justified: cross-module async boundary requires global stash.
+ *   Alternative considered: pass state through promise chain.
+ *   Rejected: promise chain carries t@ype values, not viewtypes.
+ *)
+
+implement
+ward_dom_store{l}(state) =
+  $extfcall(void, "ward_dom_global_set", state)
+
+implement
+ward_dom_load() = let
+  val p = $extfcall(ptr, "ward_dom_global_get")
+in $UNSAFE.cast{[l:agz] ptr l}(p) end (* [U3] *)
+
+(*
+ * [U1] cast{ptr}(text) for ward_safe_text -> ptr (set_safe_text, set_attr_safe):
+ *   Same cross-module barrier as create_element. ward_safe_text is abstype
+ *   assumed as ptr in memory.dats but opaque here.
+ *)
+
+implement
+ward_dom_set_safe_text{l}{tl}
+  (state, node_id, text, text_len) = let
+  val tl: int = text_len
+  val () = $extfcall(void, "ward_set_byte", state, 0, 1)
+  val () = $extfcall(void, "ward_set_i32", state, 1, node_id)
+  val () = $extfcall(void, "ward_set_byte", state, 5, tl)
+  val () = $extfcall(void, "ward_set_byte", state, 6, 0)
+  val () = $extfcall(void, "ward_copy_at", state, 7,
+                     $UNSAFE.cast{ptr}(text), tl) (* [U1] *)
+  val () = _ward_dom_flush(state, 7 + tl)
+in state end
+
+implement
+ward_dom_set_attr_safe{l}{nl}{vl}
+  (state, node_id, attr_name, name_len, value, value_len) = let
+  val nl: int = name_len
+  val vl: int = value_len
+  val () = $extfcall(void, "ward_set_byte", state, 0, 2)
+  val () = $extfcall(void, "ward_set_i32", state, 1, node_id)
+  val () = $extfcall(void, "ward_set_byte", state, 5, nl)
+  val () = $extfcall(void, "ward_copy_at", state, 6,
+                     $UNSAFE.cast{ptr}(attr_name), nl) (* [U1] *)
+  val off = 6 + nl
+  val () = $extfcall(void, "ward_set_byte", state, off, vl)
+  val () = $extfcall(void, "ward_set_byte", state, off + 1, 0)
+  val () = $extfcall(void, "ward_copy_at", state, off + 2,
+                     $UNSAFE.cast{ptr}(value), vl) (* [U1] *)
+  val () = _ward_dom_flush(state, off + 2 + vl)
+in state end
+
 end (* local *)
