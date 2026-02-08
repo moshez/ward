@@ -104,7 +104,11 @@ wasm-ld --no-entry --allow-undefined \
 ### 3. Wire the JS bridge
 
 ```html
-<div id="root"></div>
+<div id="root">
+  <!-- Visible while WASM loads. Your ward_node_init should start
+       with ward_dom_remove_children to clear this placeholder. -->
+  <p>Loading...</p>
+</div>
 <script type="module">
   import { loadWard } from './vendor/ward/lib/ward_bridge.mjs';
 
@@ -114,5 +118,7 @@ wasm-ld --no-entry --allow-undefined \
   await done;
 </script>
 ```
+
+Put a loading indicator (spinner, skeleton screen, etc.) inside `ward-root`. Since `loadWard` calls `ward_node_init` after instantiation, your init function should begin with `ward_dom_remove_children` on the root node to clear the placeholder before rendering.
 
 See [bridge.md](docs/bridge.md) for the complete API and all WASM imports/exports.
