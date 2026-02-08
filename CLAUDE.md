@@ -19,6 +19,7 @@ make wasm         # WASM only (build/ward.wasm)
 make exerciser    # Native exerciser (builds and runs)
 make anti-exerciser  # Verify unsafe code is rejected
 make clean        # Remove build/
+make node-exerciser  # Node.js DOM exerciser (requires Node.js + npm)
 ```
 
 ## Architecture
@@ -111,19 +112,25 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 ## Files
 
 ### Library (`lib/`)
-- `memory.sats` -- type declarations (the specification): 5 types, 17 functions
+- `memory.sats` -- type declarations (the specification): 5 types, 18 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
-- `dom.sats` -- DOM diff protocol specification
+- `dom.sats` -- DOM diff protocol specification (5 core + 4 convenience operations)
 - `dom.dats` -- DOM implementation (ward_set_byte/i32/copy_at via $extfcall)
 - `promise.sats` -- linear promise specification: datasort, 2 types, 6 functions
 - `promise.dats` -- promise implementation (ward_slot_get/set via $extfcall)
+- `event.sats` -- promise-based timer and exit specification
+- `event.dats` -- timer implementation (erases resolver to ptr for JS host)
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- bump allocator + memset/memcpy for WASM
+- `runtime.c` -- bump allocator + memset/memcpy + DOM global state for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
 - `exerciser.dats` -- native exerciser that tests all operations
 - `wasm_exerciser.dats` -- WASM exerciser exporting test functions
+- `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
+- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol, applies to DOM
+- `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
+- `package.json` -- npm dependencies (jsdom)
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
 - `anti/` -- anti-exerciser: code that MUST fail to compile (12 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,

@@ -189,6 +189,38 @@ All DOM operations consume and return `ward_dom_state` (linear threading). Tag a
 | `ward_dom_set_style(state, node_id, value, value_len)` | Set style (dedicated setter -- value from borrow) |
 | `ward_dom_remove_children(state, node_id)` | Remove all children of a node |
 
+## Browser usage
+
+Ward compiles to freestanding WASM. The JS bridge (`exerciser/ward_bridge.mjs`) connects it to any DOM -- browser or jsdom. It has no Node.js dependencies.
+
+```html
+<div id="ward-root"></div>
+<script type="module">
+  import { loadWard } from './ward_bridge.mjs';
+
+  const root = document.getElementById('ward-root');
+  const wasm = await (await fetch('node_ward.wasm')).arrayBuffer();
+  const { done } = await loadWard(wasm, root);
+  await done;
+</script>
+```
+
+`loadWard(wasmBytes, rootElement)` instantiates the WASM, wires up the DOM bridge under `root`, and calls `ward_node_init`. It returns a `done` promise that resolves when the WASM signals exit.
+
+The bridge provides three WASM imports (via `env`):
+
+| Import | Purpose |
+|--------|---------|
+| `ward_dom_flush(ptr, len)` | Parses the binary diff protocol from WASM memory, applies to DOM |
+| `ward_set_timer(delay, ptr)` | `setTimeout` + calls `ward_timer_fire(ptr)` on expiry |
+| `ward_exit()` | Resolves the `done` promise |
+
+For Node.js testing, `exerciser/node_exerciser.mjs` uses jsdom to provide the document:
+
+```bash
+make node-exerciser   # builds WASM, npm installs jsdom, runs exerciser
+```
+
 ## How it works
 
 **Linear types as ownership.** Ward types are `absvtype` -- linear types that must be consumed exactly once. At runtime they erase to `ptr`. The compiler enforces that every array is freed, every promise is handled, every resolver is used.
