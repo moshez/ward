@@ -92,11 +92,14 @@ static inline void *ward_promise_then_impl(void *p, void *f) {
 
 /* DOM helpers */
 #define ward_dom_state(...) atstype_ptrk
+#define ward_dom_stream(...) atstype_ptrk
+#define ward_dom_ticket atstype_ptrk
 
 /* DOM state persistence */
 static void *_ward_dom_stored = 0;
 static inline void ward_dom_global_set(void *p) { _ward_dom_stored = p; }
 static inline void *ward_dom_global_get(void) { return _ward_dom_stored; }
+
 static inline void ward_set_byte(void *p, int off, int v) {
   ((unsigned char*)p)[off] = (unsigned char)v;
 }

@@ -287,6 +287,8 @@ static inline void *ward_promise_then_impl(void *p, void *f) {
 
 /* DOM helpers */
 #define ward_dom_state(...) atstype_ptrk
+#define ward_dom_stream(...) atstype_ptrk
+#define ward_dom_ticket atstype_ptrk
 static inline void ward_set_byte(void *p, int off, int v) {
   ((unsigned char*)p)[off] = (unsigned char)v;
 }

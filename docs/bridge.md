@@ -25,7 +25,9 @@ After instantiation, the bridge calls `exports.ward_node_init(0)` to start the W
 
 ## Binary DOM protocol
 
-The bridge parses a binary protocol from WASM memory via the `ward_dom_flush(bufPtr, len)` import. Each message starts with a 1-byte opcode followed by a 4-byte little-endian node_id.
+The bridge parses a binary protocol from WASM memory via the `ward_dom_flush(bufPtr, len)` import. Each flush call can carry **multiple ops** batched into the 256KB diff buffer. The bridge loops through all ops in a single call, reading from `mem[bufPtr + pos]` and advancing `pos` after each op.
+
+Each op starts with a 1-byte opcode followed by a 4-byte little-endian node_id.
 
 ### Opcodes
 
@@ -38,6 +40,10 @@ The bridge parses a binary protocol from WASM memory via the `ward_dom_flush(buf
 
 All integers are little-endian. Text is UTF-8 (safe text characters are all ASCII).
 
+### Batching
+
+The ATS2 stream API accumulates ops into a 256KB buffer. When the buffer fills (next op wouldn't fit), it auto-flushes the current batch and resets the cursor. At `stream_end`, any remaining ops are flushed. This means the JS bridge typically receives many ops per flush call, reducing WASM/JS boundary crossings.
+
 ## WASM imports (env)
 
 The bridge provides these functions as WASM imports under the `env` namespace:
@@ -46,87 +52,87 @@ The bridge provides these functions as WASM imports under the `env` namespace:
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_dom_flush` | `(bufPtr, len) → void` | Parse binary diff protocol, apply to DOM |
-| `ward_set_timer` | `(delayMs, resolverPtr) → void` | `setTimeout` + call `ward_timer_fire(resolverPtr)` on expiry |
-| `ward_exit` | `() → void` | Resolve the `done` promise |
+| `ward_dom_flush` | `(bufPtr, len) -> void` | Parse binary diff protocol, apply to DOM (multi-op loop) |
+| `ward_set_timer` | `(delayMs, resolverPtr) -> void` | `setTimeout` + call `ward_timer_fire(resolverPtr)` on expiry |
+| `ward_exit` | `() -> void` | Resolve the `done` promise |
 
 ### IndexedDB
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_idb_js_put` | `(keyPtr, keyLen, valPtr, valLen, resolverPtr) → void` | Put key-value pair |
-| `ward_idb_js_get` | `(keyPtr, keyLen, resolverPtr) → void` | Get value by key |
-| `ward_idb_js_delete` | `(keyPtr, keyLen, resolverPtr) → void` | Delete key |
+| `ward_idb_js_put` | `(keyPtr, keyLen, valPtr, valLen, resolverPtr) -> void` | Put key-value pair |
+| `ward_idb_js_get` | `(keyPtr, keyLen, resolverPtr) -> void` | Get value by key |
+| `ward_idb_js_delete` | `(keyPtr, keyLen, resolverPtr) -> void` | Delete key |
 
 ### Window
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_focus_window` | `() → void` | Focus the window |
-| `ward_js_get_visibility_state` | `() → i32` | 1=visible, 0=hidden |
-| `ward_js_log` | `(level, msgPtr, msgLen) → void` | Console log (0=debug..3=error) |
+| `ward_js_focus_window` | `() -> void` | Focus the window |
+| `ward_js_get_visibility_state` | `() -> i32` | 1=visible, 0=hidden |
+| `ward_js_log` | `(level, msgPtr, msgLen) -> void` | Console log (0=debug..3=error) |
 
 ### Navigation
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_get_url` | `(outPtr, maxLen) → i32` | Get current URL, returns bytes written |
-| `ward_js_get_url_hash` | `(outPtr, maxLen) → i32` | Get URL hash |
-| `ward_js_set_url_hash` | `(hashPtr, hashLen) → void` | Set URL hash |
-| `ward_js_replace_state` | `(urlPtr, urlLen) → void` | history.replaceState |
-| `ward_js_push_state` | `(urlPtr, urlLen) → void` | history.pushState |
+| `ward_js_get_url` | `(outPtr, maxLen) -> i32` | Get current URL, returns bytes written |
+| `ward_js_get_url_hash` | `(outPtr, maxLen) -> i32` | Get URL hash |
+| `ward_js_set_url_hash` | `(hashPtr, hashLen) -> void` | Set URL hash |
+| `ward_js_replace_state` | `(urlPtr, urlLen) -> void` | history.replaceState |
+| `ward_js_push_state` | `(urlPtr, urlLen) -> void` | history.pushState |
 
 ### DOM read
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_measure_node` | `(nodeId) → i32` | Measure DOM node, fill stash |
-| `ward_js_query_selector` | `(selectorPtr, selectorLen) → i32` | Query selector, returns node_id or -1 |
+| `ward_js_measure_node` | `(nodeId) -> i32` | Measure DOM node, fill stash |
+| `ward_js_query_selector` | `(selectorPtr, selectorLen) -> i32` | Query selector, returns node_id or -1 |
 
 ### Event listener
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_add_event_listener` | `(nodeId, typePtr, typeLen, listenerId) → void` | Register event listener |
-| `ward_js_remove_event_listener` | `(listenerId) → void` | Remove event listener |
-| `ward_js_prevent_default` | `() → void` | Prevent default on current event |
+| `ward_js_add_event_listener` | `(nodeId, typePtr, typeLen, listenerId) -> void` | Register event listener |
+| `ward_js_remove_event_listener` | `(listenerId) -> void` | Remove event listener |
+| `ward_js_prevent_default` | `() -> void` | Prevent default on current event |
 
 ### Fetch
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_fetch` | `(urlPtr, urlLen, resolverPtr) → void` | Fetch URL |
+| `ward_js_fetch` | `(urlPtr, urlLen, resolverPtr) -> void` | Fetch URL |
 
 ### Clipboard
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_clipboard_write_text` | `(textPtr, textLen, resolverPtr) → void` | Write text to clipboard |
+| `ward_js_clipboard_write_text` | `(textPtr, textLen, resolverPtr) -> void` | Write text to clipboard |
 
 ### File
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_file_open` | `(inputNodeId, resolverPtr) → void` | Open file from input |
-| `ward_js_file_read` | `(handle, fileOffset, len, outPtr) → i32` | Read from file |
-| `ward_js_file_close` | `(handle) → void` | Close file |
+| `ward_js_file_open` | `(inputNodeId, resolverPtr) -> void` | Open file from input |
+| `ward_js_file_read` | `(handle, fileOffset, len, outPtr) -> i32` | Read from file |
+| `ward_js_file_close` | `(handle) -> void` | Close file |
 
 ### Decompress
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_decompress` | `(dataPtr, dataLen, method, resolverPtr) → void` | Decompress data |
-| `ward_js_blob_read` | `(handle, blobOffset, len, outPtr) → i32` | Read from blob |
-| `ward_js_blob_free` | `(handle) → void` | Free blob |
+| `ward_js_decompress` | `(dataPtr, dataLen, method, resolverPtr) -> void` | Decompress data |
+| `ward_js_blob_read` | `(handle, blobOffset, len, outPtr) -> i32` | Read from blob |
+| `ward_js_blob_free` | `(handle) -> void` | Free blob |
 
 ### Notification/Push
 
 | Import | Signature | Purpose |
 |--------|-----------|---------|
-| `ward_js_notification_request_permission` | `(resolverPtr) → void` | Request notification permission |
-| `ward_js_notification_show` | `(titlePtr, titleLen) → void` | Show notification |
-| `ward_js_push_subscribe` | `(vapidPtr, vapidLen, resolverPtr) → void` | Subscribe to push |
-| `ward_js_push_get_subscription` | `(resolverPtr) → void` | Get existing subscription |
+| `ward_js_notification_request_permission` | `(resolverPtr) -> void` | Request notification permission |
+| `ward_js_notification_show` | `(titlePtr, titleLen) -> void` | Show notification |
+| `ward_js_push_subscribe` | `(vapidPtr, vapidLen, resolverPtr) -> void` | Subscribe to push |
+| `ward_js_push_get_subscription` | `(resolverPtr) -> void` | Get existing subscription |
 
 ## WASM exports expected
 

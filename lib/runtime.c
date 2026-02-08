@@ -32,7 +32,7 @@ void *memcpy(void *dst, const void *src, unsigned int n) {
     return dst;
 }
 
-/* DOM state global — single-instance for ward_dom_store/ward_dom_load */
+/* DOM state global — single-instance for ward_dom_checkout/ward_dom_redeem */
 static void *_ward_dom_stored = 0;
 void ward_dom_global_set(void *p) { _ward_dom_stored = p; }
 void *ward_dom_global_get(void) { return _ward_dom_stored; }

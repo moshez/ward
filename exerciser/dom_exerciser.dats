@@ -139,38 +139,41 @@ extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
 implement ward_node_init (root_id) = let
   val dom = ward_dom_init()
-  val () = ward_dom_store(dom)
+  val ticket = ward_dom_checkout(dom)
 
   (* Exercise ward_log — sync, no promise needed *)
   val log_msg = make_log_msg()
   val () = ward_log(1, log_msg, 9)
 
-  (* --- Flat promise chain: timer → DOM → IDB put → get → delete → timer → exit --- *)
+  (* --- Flat promise chain: timer -> DOM -> IDB put -> get -> delete -> timer -> exit --- *)
 
   val p1 = ward_timer_set(1000)
 
   (* Step 1: 1s timer fires — create DOM elements, start IDB put *)
   val p2 = ward_promise_then<int><int>(p1,
     lam (x: int) =<cloref1> let
-      val dom = ward_dom_load()
+      val dom = ward_dom_redeem(ticket)
+
+      val s = ward_dom_stream_begin(dom)
 
       val tag_p = make_tag_p()
-      val dom = ward_dom_create_element(dom, 1, root_id, tag_p, 1)
+      val s = ward_dom_stream_create_element(s, 1, root_id, tag_p, 1)
 
       val text_hello = make_text_hello()
-      val dom = ward_dom_set_safe_text(dom, 1, text_hello, 10)
+      val s = ward_dom_stream_set_safe_text(s, 1, text_hello, 10)
 
       val tag_span = make_tag_span()
-      val dom = ward_dom_create_element(dom, 2, root_id, tag_span, 4)
+      val s = ward_dom_stream_create_element(s, 2, root_id, tag_span, 4)
 
       val attr_class = make_attr_class()
       val val_demo = make_val_demo()
-      val dom = ward_dom_set_attr_safe(dom, 2, attr_class, 5, val_demo, 4)
+      val s = ward_dom_stream_set_attr_safe(s, 2, attr_class, 5, val_demo, 4)
 
       val text_works = make_text_works()
-      val dom = ward_dom_set_safe_text(dom, 2, text_works, 8)
+      val s = ward_dom_stream_set_safe_text(s, 2, text_works, 8)
 
-      val () = ward_dom_store(dom)
+      val dom = ward_dom_stream_end(s)
+      val _ = ward_dom_checkout(dom)
 
       (* Build value array [72,101,108,108,111] = "Hello" *)
       val idb_val = ward_arr_alloc<byte>(5)
@@ -211,7 +214,7 @@ implement ward_node_init (root_id) = let
   (* Step 5: 5s timer fires — clean up and exit *)
   val p6 = ward_promise_then<int><int>(p5,
     lam (x2: int) =<cloref1> let
-      val dom = ward_dom_load()
+      val dom = ward_dom_redeem(ticket)
       val () = ward_dom_fini(dom)
       val () = ward_exit()
     in ward_promise_return<int>(0) end)

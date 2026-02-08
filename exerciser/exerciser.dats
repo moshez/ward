@@ -99,8 +99,8 @@ implement main0 () = let
   val () = println! ("safe_text[0] = ", v0, " ('c'=99)")
   val () = println! ("safe_text[4] = ", v4, " ('s'=115)")
 
-  (* === DOM: create element, set attr, set text, remove children === *)
-  val () = println! ("\n=== DOM: ward_dom operations ===")
+  (* === DOM: stream create element, set attr, set text, remove children === *)
+  val () = println! ("\n=== DOM: ward_dom stream operations ===")
   val dom = ward_dom_init()
   val () = println! ("dom state initialized")
 
@@ -111,7 +111,8 @@ implement main0 () = let
   val b = ward_text_putc(b, 2, char2int1('v'))
   val tag_div = ward_text_done(b)
 
-  val dom = ward_dom_create_element(dom, 1, 0, tag_div, 3)
+  val s = ward_dom_stream_begin(dom)
+  val s = ward_dom_stream_create_element(s, 1, 0, tag_div, 3)
   val () = println! ("created element 'div' (node 1, parent 0)")
 
   (* Set attribute: name="class" (safe text), value from borrow *)
@@ -129,7 +130,7 @@ implement main0 () = let
   val () = ward_arr_set<byte> (vbuf, 2, int2byte0(105))  (* i *)
   val () = ward_arr_set<byte> (vbuf, 3, int2byte0(110))  (* n *)
   val @(vfrozen, vborrow) = ward_arr_freeze<byte> (vbuf)
-  val dom = ward_dom_set_attr(dom, 1, attr_class, 5, vborrow, 4)
+  val s = ward_dom_stream_set_attr(s, 1, attr_class, 5, vborrow, 4)
   val () = println! ("set attr class='main' on node 1")
   val () = ward_arr_drop<byte> (vfrozen, vborrow)
   val vbuf = ward_arr_thaw<byte> (vfrozen)
@@ -143,20 +144,21 @@ implement main0 () = let
   val () = ward_arr_set<byte> (tbuf, 3, int2byte0(108))  (* l *)
   val () = ward_arr_set<byte> (tbuf, 4, int2byte0(111))  (* o *)
   val @(tfrozen, tborrow) = ward_arr_freeze<byte> (tbuf)
-  val dom = ward_dom_set_text(dom, 1, tborrow, 5)
+  val s = ward_dom_stream_set_text(s, 1, tborrow, 5)
   val () = println! ("set text 'Hello' on node 1")
 
   (* Set style (dedicated setter) *)
-  val dom = ward_dom_set_style(dom, 1, tborrow, 5)
+  val s = ward_dom_stream_set_style(s, 1, tborrow, 5)
   val () = println! ("set style on node 1 via dedicated setter")
 
   val () = ward_arr_drop<byte> (tfrozen, tborrow)
   val tbuf = ward_arr_thaw<byte> (tfrozen)
   val () = ward_arr_free<byte> (tbuf)
 
-  val dom = ward_dom_remove_children(dom, 1)
+  val s = ward_dom_stream_remove_children(s, 1)
   val () = println! ("removed children of node 1")
 
+  val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
   val () = println! ("dom state freed")
 

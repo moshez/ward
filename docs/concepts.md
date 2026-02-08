@@ -32,15 +32,15 @@ Mutable arrays can be frozen to allow shared read-only access. The borrow count 
 
 ```
 ward_arr(a, l, n)                        (* mutable, owned *)
-    │
-    ▼ freeze
+    |
+    v freeze
 @(ward_arr_frozen(a, l, n, 1),           (* frozen, 1 borrow *)
   ward_arr_borrow(a, l, n))              (* read-only handle *)
-    │
-    ├── dup → borrow count becomes k+1
-    ├── drop → borrow count becomes k-1
-    │
-    ▼ thaw (requires k=0)
+    |
+    +-- dup -> borrow count becomes k+1
+    +-- drop -> borrow count becomes k-1
+    |
+    v thaw (requires k=0)
 ward_arr(a, l, n)                        (* mutable again *)
 ```
 
@@ -78,18 +78,40 @@ val p2 = ward_promise_then<int><int>(p, lam (x) => ward_promise_return<int>(x + 
 
 No error type parameter. Use `Result(a, e)` as your `a` if you need errors.
 
-## DOM state threading
+## DOM streaming
 
-DOM operations consume and return a linear `ward_dom_state`. This ensures operations are sequenced and the state is not duplicated or leaked:
+DOM operations use a streaming model that batches multiple ops into a 256KB buffer before flushing to the JS bridge. This minimizes WASM/JS boundary crossings.
+
+The stream lifecycle is: `begin` -> ops -> `end`.
 
 ```ats
 val dom = ward_dom_init()
-val dom = ward_dom_create_element(dom, 1, 0, tag, 3)
-val dom = ward_dom_set_safe_text(dom, 1, text, 10)
+val s = ward_dom_stream_begin(dom)
+val s = ward_dom_stream_create_element(s, 1, 0, tag, 3)
+val s = ward_dom_stream_set_safe_text(s, 1, text, 10)
+val dom = ward_dom_stream_end(s)       (* flushes remaining ops *)
 val () = ward_dom_fini(dom)
 ```
 
-For async boundaries (e.g., timer callbacks), `ward_dom_store` and `ward_dom_load` persist and retrieve the state through a global slot.
+`stream_begin` consumes the `ward_dom_state` and returns a `ward_dom_stream`. Stream ops accumulate into the buffer. When the buffer fills, the stream auto-flushes and resets the cursor. `stream_end` flushes any remaining ops and returns the `ward_dom_state`.
+
+### Checkout/redeem for async boundaries
+
+For async boundaries (e.g., timer callbacks), `ward_dom_checkout` stashes the state in a global and returns a non-linear `ward_dom_ticket`. The ticket can be captured in `cloref1` closures. `ward_dom_redeem` recovers the state from the global.
+
+```ats
+val dom = ward_dom_init()
+val ticket = ward_dom_checkout(dom)
+
+val p = ward_promise_then<int><int>(timer,
+  lam (x: int) =<cloref1> let
+    val dom = ward_dom_redeem(ticket)   (* ticket captured in closure *)
+    val s = ward_dom_stream_begin(dom)
+    val s = ward_dom_stream_create_element(s, 1, 0, tag, 1)
+    val dom = ward_dom_stream_end(s)
+    val _ = ward_dom_checkout(dom)       (* stash back for next callback *)
+  in ... end)
+```
 
 ## The trusted surface
 
@@ -100,7 +122,7 @@ Safety by construction means the `.sats` files are the specification. User code 
 - **`runtime.h`** / **`runtime.c`** -- the C runtime (bump allocator, memset/memcpy).
 - **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports.
 
-The anti-exerciser (`exerciser/anti/`) contains 12 files that must fail to compile, verifying that the type system rejects:
+The anti-exerciser (`exerciser/anti/`) contains 13 files that must fail to compile, verifying that the type system rejects:
 
 | File | What it tests |
 |------|--------------|
@@ -116,3 +138,4 @@ The anti-exerciser (`exerciser/anti/`) contains 12 files that must fail to compi
 | `extract_pending.dats` | Extracting from a pending promise |
 | `forget_resolver.dats` | Forgetting to use a resolver |
 | `use_after_then.dats` | Using a promise after chaining |
+| `use_stream_after_end.dats` | Using a stream after stream_end |

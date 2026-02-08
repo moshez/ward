@@ -39,6 +39,8 @@ malloc/free          -- the unsafe world (never exposed)
 
 All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- safety guarantees are inescapable. All proofs are erased at runtime -- zero overhead.
 
+**WASM memory:** 16 MB initial, 256 MB max, 64 KB stack. DOM diff buffer is 256 KB.
+
 ## API
 
 ### Types
@@ -52,7 +54,9 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_text_builder(n, filled)` | Linear builder for safe text construction |
 | `ward_promise(a, s)` | Linear promise indexed by `PromiseState` (Pending or Resolved) |
 | `ward_promise_resolver(a)` | Linear write-end, consumed by `resolve` |
-| `ward_dom_state(l)` | Linear DOM diff buffer at address `l` |
+| `ward_dom_state(l)` | Linear DOM diff buffer at address `l` (256KB) |
+| `ward_dom_stream(l)` | Linear stream that accumulates ops, auto-flushes |
+| `ward_dom_ticket` | Non-linear token for async boundaries (captured in closures) |
 
 ### Memory Functions
 
@@ -93,11 +97,17 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 |----------|-----------|
 | `ward_dom_init()` | `-> [l:agz] ward_dom_state(l)` |
 | `ward_dom_fini(state)` | `ward_dom_state(l) -> void` |
-| `ward_dom_create_element(state, node_id, parent_id, tag, tag_len)` | Create element with safe text tag |
-| `ward_dom_set_text(state, node_id, text, text_len)` | Set text from borrow |
-| `ward_dom_set_attr(state, node_id, attr_name, name_len, value, value_len)` | Set attribute (safe text name) |
-| `ward_dom_set_style(state, node_id, value, value_len)` | Dedicated style setter |
-| `ward_dom_remove_children(state, node_id)` | Remove all children |
+| `ward_dom_checkout(state)` | `ward_dom_state(l) -> ward_dom_ticket` |
+| `ward_dom_redeem(ticket)` | `ward_dom_ticket -> [l:agz] ward_dom_state(l)` |
+| `ward_dom_stream_begin(state)` | `ward_dom_state(l) -> ward_dom_stream(l)` |
+| `ward_dom_stream_end(stream)` | `ward_dom_stream(l) -> ward_dom_state(l)` |
+| `ward_dom_stream_create_element(s, node_id, parent_id, tag, tag_len)` | Create element with safe text tag |
+| `ward_dom_stream_set_text(s, node_id, text, text_len)` | Set text from borrow |
+| `ward_dom_stream_set_attr(s, node_id, attr_name, name_len, value, value_len)` | Set attribute (safe text name) |
+| `ward_dom_stream_set_style(s, node_id, value, value_len)` | Dedicated style setter |
+| `ward_dom_stream_remove_children(s, node_id)` | Remove all children |
+| `ward_dom_stream_set_safe_text(s, node_id, text, text_len)` | Set text from safe text |
+| `ward_dom_stream_set_attr_safe(s, node_id, attr_name, name_len, value, value_len)` | Set attr from safe text |
 
 ### SAFE_CHAR predicate
 
@@ -116,15 +126,15 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 ### Library (`lib/`)
 - `memory.sats` -- type declarations (the specification): 5 types, 18 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
-- `dom.sats` -- DOM diff protocol specification (5 core + 4 convenience operations)
-- `dom.dats` -- DOM implementation (ward_set_byte/i32/copy_at via $extfcall)
+- `dom.sats` -- DOM streaming specification: 3 types (state, stream, ticket), 13 functions
+- `dom.dats` -- DOM streaming implementation (auto-flush, cursor global, $extfcall)
 - `promise.sats` -- linear promise specification: datasort, 2 types, 7 functions
 - `promise.dats` -- promise implementation (ward_slot_get/set via $extfcall)
 - `event.sats` -- promise-based timer and exit specification
 - `event.dats` -- timer implementation (erases resolver to ptr for JS host)
-- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol, applies to DOM
+- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol (multi-op loop), applies to DOM
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- bump allocator + memset/memcpy + DOM global state for WASM
+- `runtime.c` -- bump allocator + memset/memcpy + DOM global state + cursor for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
@@ -133,10 +143,11 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
 - `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
-- `anti/` -- anti-exerciser: code that MUST fail to compile (12 files):
+- `anti/` -- anti-exerciser: code that MUST fail to compile (13 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,
   use_after_free, write_while_frozen, unsafe_char,
-  double_resolve, extract_pending, forget_resolver, use_after_then
+  double_resolve, extract_pending, forget_resolver, use_after_then,
+  use_stream_after_end
 
 ### Tests (`tests/`)
 - `helpers.mjs` -- shared test utilities (creates ward instance with jsdom)
