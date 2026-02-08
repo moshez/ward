@@ -28,7 +28,7 @@ WASM_NODE_CFLAGS := $(WASM_CFLAGS) -DWARD_NO_DOM_STUB
 ANTI_SRCS := $(wildcard exerciser/anti/*.dats)
 
 # --- Default target ---
-.PHONY: all clean exerciser wasm anti-exerciser check node-exerciser
+.PHONY: all clean exerciser wasm anti-exerciser check node-exerciser test check-all
 
 all: wasm exerciser
 
@@ -102,12 +102,64 @@ anti-exerciser:
 
 # --- Node DOM exerciser ---
 
+# Bridge module common deps
+BRIDGE_SATS := lib/memory.sats lib/memory.dats lib/promise.sats lib/promise.dats
+
 # ATS2 -> C for event module
-build/event_dats.c: lib/event.dats lib/event.sats lib/promise.sats lib/memory.sats lib/memory.dats lib/promise.dats | build
+build/event_dats.c: lib/event.dats lib/event.sats $(BRIDGE_SATS) | build
 	$(PATSOPT) -o $@ -d $<
 
+# ATS2 -> C for IDB module
+build/idb_dats.c: lib/idb.dats lib/idb.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for window module
+build/window_dats.c: lib/window.dats lib/window.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for nav module
+build/nav_dats.c: lib/nav.dats lib/nav.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for dom_read module
+build/dom_read_dats.c: lib/dom_read.dats lib/dom_read.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for listener module
+build/listener_dats.c: lib/listener.dats lib/listener.sats lib/memory.sats lib/memory.dats | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for fetch module
+build/fetch_dats.c: lib/fetch.dats lib/fetch.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for clipboard module
+build/clipboard_dats.c: lib/clipboard.dats lib/clipboard.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for file module
+build/file_dats.c: lib/file.dats lib/file.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for decompress module
+build/decompress_dats.c: lib/decompress.dats lib/decompress.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# ATS2 -> C for notify module
+build/notify_dats.c: lib/notify.dats lib/notify.sats $(BRIDGE_SATS) | build
+	$(PATSOPT) -o $@ -d $<
+
+# All bridge .sats/.dats for dom_exerciser deps
+BRIDGE_ALL_SATS := lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats \
+  lib/promise.sats lib/promise.dats lib/event.sats lib/event.dats \
+  lib/idb.sats lib/idb.dats lib/window.sats lib/window.dats \
+  lib/nav.sats lib/nav.dats lib/dom_read.sats lib/dom_read.dats \
+  lib/listener.sats lib/listener.dats lib/fetch.sats lib/fetch.dats \
+  lib/clipboard.sats lib/clipboard.dats lib/file.sats lib/file.dats \
+  lib/decompress.sats lib/decompress.dats lib/notify.sats lib/notify.dats
+
 # ATS2 -> C for dom_exerciser
-build/dom_exerciser_dats.c: exerciser/dom_exerciser.dats lib/memory.sats lib/memory.dats lib/dom.sats lib/dom.dats lib/promise.sats lib/promise.dats lib/event.sats lib/event.dats | build
+build/dom_exerciser_dats.c: exerciser/dom_exerciser.dats $(BRIDGE_ALL_SATS) | build
 	$(PATSOPT) -o $@ -d $<
 
 # Recompile dom for node (ward_dom_flush = WASM import, not stub)
@@ -115,6 +167,36 @@ build/dom_node_dats.o: build/dom_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
 build/event_dats.o: build/event_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/idb_dats.o: build/idb_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/window_dats.o: build/window_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/nav_dats.o: build/nav_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/dom_read_dats.o: build/dom_read_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/listener_dats.o: build/listener_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/fetch_dats.o: build/fetch_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/clipboard_dats.o: build/clipboard_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/file_dats.o: build/file_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/decompress_dats.o: build/decompress_dats.c lib/runtime.h | build
+	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
+
+build/notify_dats.o: build/notify_dats.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
 build/dom_exerciser_dats.o: build/dom_exerciser_dats.c lib/runtime.h | build
@@ -130,17 +212,39 @@ build/promise_node_dats.o: build/promise_dats.c lib/runtime.h | build
 build/runtime_node.o: lib/runtime.c lib/runtime.h | build
 	$(CLANG) $(WASM_NODE_CFLAGS) -c -o $@ $<
 
-build/node_ward.wasm: build/memory_node_dats.o build/dom_node_dats.o build/promise_node_dats.o \
-    build/event_dats.o build/dom_exerciser_dats.o build/runtime_node.o
+# All node WASM objects
+NODE_WASM_OBJS := build/memory_node_dats.o build/dom_node_dats.o build/promise_node_dats.o \
+  build/event_dats.o build/idb_dats.o \
+  build/window_dats.o build/nav_dats.o build/dom_read_dats.o build/listener_dats.o \
+  build/fetch_dats.o build/clipboard_dats.o build/file_dats.o build/decompress_dats.o \
+  build/notify_dats.o \
+  build/dom_exerciser_dats.o build/runtime_node.o
+
+# WASM exports for bridge callbacks
+NODE_WASM_EXPORTS := --export=ward_node_init --export=ward_timer_fire \
+  --export=ward_idb_fire --export=ward_idb_fire_get --export=malloc \
+  --export=ward_on_event --export=ward_measure_set \
+  --export=ward_on_fetch_complete --export=ward_on_clipboard_complete \
+  --export=ward_on_file_open --export=ward_on_decompress_complete \
+  --export=ward_on_permission_result --export=ward_on_push_subscribe
+
+build/node_ward.wasm: $(NODE_WASM_OBJS)
 	$(WASM_LD) $(WASM_LDFLAGS) --allow-undefined \
-	  --export=ward_node_init --export=ward_timer_fire -o $@ $^
+	  $(NODE_WASM_EXPORTS) \
+	  -o $@ $^
 
-exerciser/node_modules: exerciser/package.json
-	cd exerciser && npm install
+node_modules: package.json
+	npm install
 
-node-exerciser: build/node_ward.wasm exerciser/node_modules
+node-exerciser: build/node_ward.wasm node_modules
 	@echo "==> Running Node DOM exerciser"
-	@cd exerciser && node node_exerciser.mjs
+	@node exerciser/node_exerciser.mjs
+
+test: build/node_ward.wasm node_modules
+	@echo "==> Running bridge tests"
+	@node --test tests/
+
+check-all: check test
 
 clean:
 	rm -rf build

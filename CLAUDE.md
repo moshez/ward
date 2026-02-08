@@ -15,6 +15,8 @@ Linear memory safety library for ATS2. Provides Rust-like guarantees (no buffer 
 ```bash
 make              # Build WASM + native exerciser
 make check        # Build everything + run anti-exerciser
+make test         # Run bridge tests (requires Node.js + npm install)
+make check-all    # make check + make test
 make wasm         # WASM only (build/ward.wasm)
 make exerciser    # Native exerciser (builds and runs)
 make anti-exerciser  # Verify unsafe code is rejected
@@ -116,10 +118,11 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
 - `dom.sats` -- DOM diff protocol specification (5 core + 4 convenience operations)
 - `dom.dats` -- DOM implementation (ward_set_byte/i32/copy_at via $extfcall)
-- `promise.sats` -- linear promise specification: datasort, 2 types, 6 functions
+- `promise.sats` -- linear promise specification: datasort, 2 types, 7 functions
 - `promise.dats` -- promise implementation (ward_slot_get/set via $extfcall)
 - `event.sats` -- promise-based timer and exit specification
 - `event.dats` -- timer implementation (erases resolver to ptr for JS host)
+- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol, applies to DOM
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
 - `runtime.c` -- bump allocator + memset/memcpy + DOM global state for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
@@ -128,14 +131,16 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `exerciser.dats` -- native exerciser that tests all operations
 - `wasm_exerciser.dats` -- WASM exerciser exporting test functions
 - `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
-- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol, applies to DOM
 - `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
-- `package.json` -- npm dependencies (jsdom)
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
 - `anti/` -- anti-exerciser: code that MUST fail to compile (12 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,
   use_after_free, write_while_frozen, unsafe_char,
   double_resolve, extract_pending, forget_resolver, use_after_then
+
+### Tests (`tests/`)
+- `helpers.mjs` -- shared test utilities (creates ward instance with jsdom)
+- `bridge_*.test.mjs` -- bridge tests using node:test
 
 ## Key ATS2 Patterns
 

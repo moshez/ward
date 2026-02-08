@@ -42,3 +42,14 @@ jobs:
         run: |
           export PATSHOME=$HOME/ATS2-Postiats-int-${{ env.ATS_VERSION }}
           make check
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: make test
+        run: |
+          export PATSHOME=$HOME/ATS2-Postiats-int-${{ env.ATS_VERSION }}
+          npm install
+          make test
