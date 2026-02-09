@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Enable libc malloc/free for ATS2 datavtype constructors */
+#define ATS_MEMALLOC_LIBC
+
 /* All ward viewtypes are pointers at runtime */
 #define ward_arr(...) atstype_ptrk
 #define ward_arr_frozen(...) atstype_ptrk

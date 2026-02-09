@@ -142,6 +142,13 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ATSINSmove_nil(tmp) (tmp = ((void*)0))
 
 #define ATSSELfltrec(pmv, tyrec, lab) ((pmv).lab)
+#define ATSSELcon(pmv, tycon, lab) (((tycon*)(pmv))->lab)
+
+#define ATSINSmove_con1_beg()
+#define ATSINSmove_con1_new(tmp, tycon) (tmp = ATS_MALLOC(sizeof(tycon)))
+#define ATSINSstore_con1_ofs(tmp, tycon, lab, val) (((tycon*)(tmp))->lab = val)
+#define ATSINSmove_con1_end()
+#define ATSINSfreecon(ptr) ATS_MFREE(ptr)
 
 #define ATSINSmove_fltrec_beg()
 #define ATSINSmove_fltrec_end()

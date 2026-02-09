@@ -1,7 +1,7 @@
 (* dom.dats — Ward DOM implementation with streaming *)
 (* Trusted core: writes diff protocol bytes to owned buffer, flushes to bridge.
    Stream API batches multiple ops into 256KB buffer, auto-flushes when full.
-   No globals for cursor — stream is a ward_arr<ptr>(2): [buf, cursor]. *)
+   Stream is a datavtype carrying {buf: ptr, cursor: int}. *)
 
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
@@ -18,8 +18,11 @@ extern fun _ward_malloc_bytes
 
 local
 
+datavtype stream_vt(l:addr) =
+  | {l:agz} stream_mk(l) of (ptr l, int(*cursor*))
+
 assume ward_dom_state(l) = ptr l
-assume ward_dom_stream(l) = ward_arr(ptr, l, 2)   (* [buf, cursor] *)
+assume ward_dom_stream(l) = stream_vt(l)
 assume ward_dom_ticket = ptr         (* zero-cost dummy *)
 
 in
@@ -30,28 +33,16 @@ in
  * [U1] cast{ptr}(tag) for ward_safe_text -> ptr (create_element, set_attr):
  *   ward_safe_text is abstype assumed as ptr in memory.dats, but that
  *   assumption is invisible from this module (cross-module abstraction).
- *   Alternative considered: expose ward_safe_text_ptr in memory.sats.
- *   Rejected: would let user code obtain raw pointers, breaking encapsulation.
  *
  * [U2] castvwtp1{ptr}(text/value) for ward_arr_borrow -> ptr
  *   (set_text, set_attr, set_style):
- *   Same cross-module barrier. castvwtp1 (not castvwtp0) preserves the
- *   borrow — the value is !-qualified and not consumed.
- *   Alternative considered: expose ward_arr_borrow_ptr in memory.sats.
- *   Rejected: same reason — would expose raw pointers to user code.
+ *   Same cross-module barrier. castvwtp1 preserves the borrow.
  *
  * [U3] ward_dom_checkout / ward_dom_redeem:
  *   Erases/recovers ward_dom_state to/from ptr via global storage.
- *   Justified: cross-module async boundary requires global stash.
- *   Alternative considered: pass state through promise chain.
- *   Rejected: promise chain carries t@ype values, not viewtypes.
  *
- * [U5] cast{int}(ward_arr_get<ptr>(stream,1)) / cast{ptr}(cursor):
- *   The cursor integer (0..262144) is stored in a pointer-sized slot.
- *   On wasm32 (4-byte ptr) and native (8-byte ptr), the round-trip is
- *   safe because the value fits in both types.
- *   Alternative considered: dedicated int field.
- *   Rejected: ward_arr<ptr> provides uniform 2-slot storage.
+ * No $UNSAFE needed for stream data access — datavtype provides
+ * type-safe field access via @/fold@ pattern matching.
  *)
 
 (* --- Lifecycle --- *)
@@ -77,24 +68,37 @@ in $UNSAFE.cast{[l:agz] ptr l}(p) end (* [U3] *)
 
 (* --- Stream helpers --- *)
 
-fn _ward_stream_buf{l:agz}(stream: !ward_dom_stream(l)): ptr =
-  ward_arr_get<ptr>(stream, 0)
+fn _ward_stream_buf{l:agz}(stream: !stream_vt(l)): ptr = let
+  val+ @stream_mk(buf, _) = stream
+  val b = buf
+  prval () = fold@(stream)
+in b end
 
-fn _ward_stream_cursor{l:agz}(stream: !ward_dom_stream(l)): int =
-  $UNSAFE.cast{int}(ward_arr_get<ptr>(stream, 1)) (* [U5] *)
+fn _ward_stream_cursor{l:agz}(stream: !stream_vt(l)): int = let
+  val+ @stream_mk(_, cursor) = stream
+  val c = cursor
+  prval () = fold@(stream)
+in c end
 
-fn _ward_stream_set_cursor{l:agz}(stream: !ward_dom_stream(l), c: int): void =
-  ward_arr_set<ptr>(stream, 1, $UNSAFE.cast{ptr}(c)) (* [U5] *)
+fn _ward_stream_set_cursor{l:agz}(stream: !stream_vt(l), c: int): void = let
+  val+ @stream_mk(_, cursor) = stream
+  val () = cursor := c
+  prval () = fold@(stream)
+in end
 
-fn _ward_stream_auto_flush{l:agz}(stream: !ward_dom_stream(l), needed: int): int = let
-  val buf = _ward_stream_buf(stream)
-  val c = _ward_stream_cursor(stream)
+fn _ward_stream_auto_flush{l:agz}(stream: !stream_vt(l), needed: int): int = let
+  val+ @stream_mk(buf, cursor) = stream
+  val b = buf
+  val c = cursor
 in
   if c + needed > WARD_DOM_BUF_CAP_DYN then let
-    val () = _ward_dom_flush(buf, c)
-    val () = _ward_stream_set_cursor(stream, 0)
+    val () = _ward_dom_flush(b, c)
+    val () = cursor := 0
+    prval () = fold@(stream)
   in 0 end
-  else c
+  else let
+    prval () = fold@(stream)
+  in c end
 end
 
 (* --- Stream lifecycle --- *)
@@ -103,18 +107,13 @@ implement
 ward_dom_stream_begin{l}(state) = let
   val () = $extfcall(void, "free", state)  (* free state token *)
   val buf = _ward_malloc_bytes(WARD_DOM_BUF_CAP_DYN)
-  val stream = ward_arr_alloc<ptr>(2)
-  val () = ward_arr_set<ptr>(stream, 0, buf)
-  val () = ward_arr_set<ptr>(stream, 1, $UNSAFE.cast{ptr}(0)) (* [U5] *)
-in stream end
+in stream_mk(buf, 0) end
 
 implement
 ward_dom_stream_end{l}(stream) = let
-  val buf = ward_arr_get<ptr>(stream, 0)
-  val c = $UNSAFE.cast{int}(ward_arr_get<ptr>(stream, 1)) (* [U5] *)
+  val+ ~stream_mk(buf, c) = stream  (* consume stream, extract fields *)
   val () = if c > 0 then _ward_dom_flush(buf, c)
   val () = $extfcall(void, "free", buf)
-  val () = ward_arr_free<ptr>(stream)
 in _ward_malloc_bytes(4) end (* new state token *)
 
 (*
