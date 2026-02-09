@@ -138,8 +138,8 @@ static int _ward_measure[6] = {0};
 void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; }
 int ward_measure_get(int slot) { return _ward_measure[slot]; }
 
-/* Listener table — max 64 listeners */
-#define WARD_MAX_LISTENERS 64
+/* Listener table — max 128 listeners */
+#define WARD_MAX_LISTENERS 128
 static void *_ward_listener_table[WARD_MAX_LISTENERS] = {0};
 void ward_listener_set(int id, void *cb) {
     if (id >= 0 && id < WARD_MAX_LISTENERS) _ward_listener_table[id] = cb;

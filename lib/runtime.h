@@ -191,6 +191,10 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g1int_gte_int(x, y) ((x) >= (y))
 #define atspre_g1int_lte_int(x, y) ((x) <= (y))
 #define atspre_g1int_sub_int(x, y) ((x) - (y))
+#define atspre_g0int_gte_int(x, y) ((x) >= (y))
+#define atspre_g0int_lte_int(x, y) ((x) <= (y))
+#define atspre_g0int_eq_int(x, y) ((x) == (y))
+#define atspre_g0int_mul_int(x, y) ((x) * (y))
 
 /* === Closure support (needed for cloref1 lambdas) === */
 
@@ -213,6 +217,7 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ward_arr_borrow(...) atstype_ptrk
 #define ward_safe_text(...) atstype_ptrk
 #define ward_text_builder(...) atstype_ptrk
+#define ward_text_result(...) atstype_ptrk
 
 /* Memory operations (implemented in runtime.c) */
 void *malloc(int size);
@@ -293,7 +298,7 @@ int ward_bridge_stash_get_int(int slot);
 void ward_measure_set(int slot, int v);
 int ward_measure_get(int slot);
 
-/* Listener table (implemented in runtime.c) — max 64 listeners */
+/* Listener table (implemented in runtime.c) — max 128 listeners */
 void ward_listener_set(int id, void *cb);
 void *ward_listener_get(int id);
 
@@ -339,6 +344,12 @@ extern void ward_js_notification_request_permission(void *resolver);
 extern void ward_js_notification_show(void *title, int title_len);
 extern void ward_js_push_subscribe(void *vapid, int vapid_len, void *resolver);
 extern void ward_js_push_get_subscription(void *resolver);
+
+/* HTML parsing JS import */
+extern int ward_js_parse_html(void *html, int html_len);
+
+/* Callback registry — WASM export, JS calls this to fire callbacks */
+void ward_on_callback(int id, int payload);
 
 /* ward_dom_flush: stub by default, WASM import when WARD_NO_DOM_STUB */
 #ifndef WARD_NO_DOM_STUB

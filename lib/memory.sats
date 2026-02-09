@@ -150,6 +150,18 @@ fun ward_safe_text_get
   : byte
 
 (* ============================================================
+   Text from bytes — runtime SAFE_CHAR validation
+   ============================================================ *)
+
+datavtype ward_text_result(n:int) =
+  | {n:int} ward_text_ok(n) of (ward_safe_text(n))
+  | {n:int} ward_text_fail(n) of ()
+
+fun ward_text_from_bytes
+  {lb:agz}{n:pos}
+  (src: !ward_arr_borrow(byte, lb, n), len: int n): ward_text_result(n)
+
+(* ============================================================
    Utility — int to byte conversion (freestanding)
    ============================================================ *)
 

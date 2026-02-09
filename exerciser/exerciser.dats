@@ -158,9 +158,41 @@ implement main0 () = let
   val s = ward_dom_stream_remove_children(s, 1)
   val () = println! ("removed children of node 1")
 
+  val s = ward_dom_stream_remove_child(s, 1)
+  val () = println! ("removed child node 1")
+
   val dom = ward_dom_stream_end(s)
   val () = ward_dom_fini(dom)
   val () = println! ("dom state freed")
+
+  (* === ward_text_from_bytes: valid case === *)
+  val () = println! ("\n=== ward_text_from_bytes: valid case ===")
+  val vbuf = ward_arr_alloc<byte>(3)
+  val () = ward_arr_set<byte>(vbuf, 0, int2byte0(97))  (* a *)
+  val () = ward_arr_set<byte>(vbuf, 1, int2byte0(98))  (* b *)
+  val () = ward_arr_set<byte>(vbuf, 2, int2byte0(99))  (* c *)
+  val @(vfr, vbr) = ward_arr_freeze<byte>(vbuf)
+  val res = ward_text_from_bytes(vbr, 3)
+  val () = (case+ res of
+    | ~ward_text_ok(t) => println! ("ward_text_from_bytes ok: got safe text")
+    | ~ward_text_fail() => println! ("ERROR: expected ok"))
+  val () = ward_arr_drop<byte>(vfr, vbr)
+  val vbuf2 = ward_arr_thaw<byte>(vfr)
+  val () = ward_arr_free<byte>(vbuf2)
+
+  (* === ward_text_from_bytes: invalid case === *)
+  val () = println! ("\n=== ward_text_from_bytes: invalid case ===")
+  val ibuf = ward_arr_alloc<byte>(2)
+  val () = ward_arr_set<byte>(ibuf, 0, int2byte0(60))  (* < *)
+  val () = ward_arr_set<byte>(ibuf, 1, int2byte0(97))  (* a *)
+  val @(ifr, ibr) = ward_arr_freeze<byte>(ibuf)
+  val res2 = ward_text_from_bytes(ibr, 2)
+  val () = (case+ res2 of
+    | ~ward_text_ok(_t) => println! ("ERROR: expected fail")
+    | ~ward_text_fail() => println! ("ward_text_from_bytes fail: correctly rejected"))
+  val () = ward_arr_drop<byte>(ifr, ibr)
+  val ibuf2 = ward_arr_thaw<byte>(ifr)
+  val () = ward_arr_free<byte>(ibuf2)
 
   (* === Alloc/free across size classes (exercises free-list recycling) === *)
   val () = println! ("\n=== Alloc/free across size classes ===")

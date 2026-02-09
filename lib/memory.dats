@@ -112,6 +112,32 @@ ward_safe_text_get{n,i}(t, i) =
   $UNSAFE.ptr0_get<byte>(ptr_add<byte>(t, i)) (* [U1] *)
 
 implement
+ward_text_from_bytes{lb}{n}(src, len) = let
+  fun loop {i:nat | i <= n}
+    (src: ptr, i: int i, len: int n): bool =
+    if i >= len then true
+    else let
+      val b = $UNSAFE.cast{int}(
+        $UNSAFE.ptr0_get<byte>(ptr_add<byte>(src, i))) (* [U1]+[U3] *)
+    in
+      if (b >= 97 andalso b <= 122)       (* a-z *)
+         orelse (b >= 65 andalso b <= 90)  (* A-Z *)
+         orelse (b >= 48 andalso b <= 57)  (* 0-9 *)
+         orelse b = 45                     (* - *)
+      then loop(src, i + 1, len)
+      else false
+    end
+  val all_safe = loop(src, 0, len)
+in
+  if all_safe then let
+    val p = _ward_malloc_bytes(len)
+    val () = $extfcall(void, "memcpy", p, src, len)
+    val t = $UNSAFE.cast{ward_safe_text(n)}(p) (* [U1] *)
+  in ward_text_ok(t) end
+  else ward_text_fail()
+end
+
+implement
 ward_int2byte(i) = $UNSAFE.cast{byte}(i) (* [U3] *)
 
 (*

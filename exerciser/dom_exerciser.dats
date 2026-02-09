@@ -16,6 +16,8 @@ staload "./../lib/clipboard.sats"
 staload "./../lib/file.sats"
 staload "./../lib/decompress.sats"
 staload "./../lib/notify.sats"
+staload "./../lib/callback.sats"
+staload "./../lib/xml.sats"
 dynload "./../lib/memory.dats"
 dynload "./../lib/dom.dats"
 dynload "./../lib/promise.dats"
@@ -30,6 +32,8 @@ dynload "./../lib/clipboard.dats"
 dynload "./../lib/file.dats"
 dynload "./../lib/decompress.dats"
 dynload "./../lib/notify.dats"
+dynload "./../lib/callback.dats"
+dynload "./../lib/xml.dats"
 staload _ = "./../lib/memory.dats"
 staload _ = "./../lib/dom.dats"
 staload _ = "./../lib/promise.dats"
@@ -44,6 +48,8 @@ staload _ = "./../lib/clipboard.dats"
 staload _ = "./../lib/file.dats"
 staload _ = "./../lib/decompress.dats"
 staload _ = "./../lib/notify.dats"
+staload _ = "./../lib/callback.dats"
+staload _ = "./../lib/xml.dats"
 
 (* Helper: build safe text "p" (1 char) *)
 fn make_tag_p (): ward_safe_text(1) = let
@@ -172,6 +178,42 @@ implement ward_node_init (root_id) = let
 
       val text_works = make_text_works()
       val s = ward_dom_stream_set_safe_text(s, 2, text_works, 8)
+
+      (* Exercise remove_child: create a temporary element, then remove it *)
+      val b = ward_text_build(3)
+      val b = ward_text_putc(b, 0, char2int1('d'))
+      val b = ward_text_putc(b, 1, char2int1('i'))
+      val b = ward_text_putc(b, 2, char2int1('v'))
+      val tag_div = ward_text_done(b)
+      val s = ward_dom_stream_create_element(s, 3, root_id, tag_div, 3)
+      val s = ward_dom_stream_remove_child(s, 3)
+
+      (* Exercise ward_text_from_bytes: valid case *)
+      val tbuf = ward_arr_alloc<byte>(3)
+      val () = ward_arr_set<byte>(tbuf, 0, ward_int2byte(97))  (* a *)
+      val () = ward_arr_set<byte>(tbuf, 1, ward_int2byte(98))  (* b *)
+      val () = ward_arr_set<byte>(tbuf, 2, ward_int2byte(99))  (* c *)
+      val @(tfr, tbr) = ward_arr_freeze<byte>(tbuf)
+      val result = ward_text_from_bytes(tbr, 3)
+      val () = (case+ result of
+        | ~ward_text_ok(_t) => ()
+        | ~ward_text_fail() => ())
+      val () = ward_arr_drop<byte>(tfr, tbr)
+      val tbuf2 = ward_arr_thaw<byte>(tfr)
+      val () = ward_arr_free<byte>(tbuf2)
+
+      (* Exercise ward_text_from_bytes: invalid case *)
+      val ibuf = ward_arr_alloc<byte>(2)
+      val () = ward_arr_set<byte>(ibuf, 0, ward_int2byte(60))  (* < *)
+      val () = ward_arr_set<byte>(ibuf, 1, ward_int2byte(97))  (* a *)
+      val @(ifr, ibr) = ward_arr_freeze<byte>(ibuf)
+      val result2 = ward_text_from_bytes(ibr, 2)
+      val () = (case+ result2 of
+        | ~ward_text_ok(_t) => ()
+        | ~ward_text_fail() => ())
+      val () = ward_arr_drop<byte>(ifr, ibr)
+      val ibuf2 = ward_arr_thaw<byte>(ifr)
+      val () = ward_arr_free<byte>(ibuf2)
 
       val dom = ward_dom_stream_end(s)
 

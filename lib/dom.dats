@@ -103,6 +103,7 @@ end
  *   SET_ATTR:       [1:op=2] [4:node_id] [1:name_len]   [name_data]
  *                                         [1:lo] [1:hi]  [value_data]
  *   REMOVE_CHILDREN:[1:op=3] [4:node_id]
+ *   REMOVE_CHILD:   [1:op=5] [4:node_id]
  *)
 
 (* --- Stream ops --- *)
@@ -182,6 +183,16 @@ ward_dom_stream_remove_children{l}(stream, node_id) = let
   val c = _ward_stream_auto_flush{l}{5}(stream, 5)
   val+ @stream_mk(buf, cursor) = stream
   val () = ward_arr_write_byte(buf, c, 3)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = cursor := g0ofg1(c + 5)
+  prval () = fold@(stream)
+in stream end
+
+implement
+ward_dom_stream_remove_child{l}(stream, node_id) = let
+  val c = _ward_stream_auto_flush{l}{5}(stream, 5)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 5)
   val () = ward_arr_write_i32(buf, c + 1, node_id)
   val () = cursor := g0ofg1(c + 5)
   prval () = fold@(stream)

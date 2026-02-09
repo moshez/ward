@@ -14,6 +14,7 @@
 #define ward_arr_borrow(...) atstype_ptrk
 #define ward_safe_text(...) atstype_ptrk
 #define ward_text_builder(...) atstype_ptrk
+#define ward_text_result(...) atstype_ptrk
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk
@@ -91,7 +92,7 @@ static inline void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; 
 static inline int ward_measure_get(int slot) { return _ward_measure[slot]; }
 
 /* Listener table stubs */
-#define WARD_MAX_LISTENERS 64
+#define WARD_MAX_LISTENERS 128
 static void *_ward_listener_table[WARD_MAX_LISTENERS] = {0};
 static inline void ward_listener_set(int id, void *cb) {
   if (id >= 0 && id < WARD_MAX_LISTENERS) _ward_listener_table[id] = cb;
