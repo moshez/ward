@@ -19,7 +19,7 @@ WASM_CFLAGS := --target=wasm32 -O2 -nostdlib -ffreestanding \
   -D_ATS_CCOMP_PRELUDE_NONE_ \
   -include $(WARD_DIR)lib/runtime.h
 WASM_LDFLAGS := --no-entry --export-dynamic \
-  -z stack-size=65536 --initial-memory=1048576
+  -z stack-size=65536 --initial-memory=16777216 --max-memory=268435456
 
 # Node WASM flags (ward_dom_flush = WASM import, not stub)
 WASM_NODE_CFLAGS := $(WASM_CFLAGS) -DWARD_NO_DOM_STUB

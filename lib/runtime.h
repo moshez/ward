@@ -142,6 +142,13 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ATSINSmove_nil(tmp) (tmp = ((void*)0))
 
 #define ATSSELfltrec(pmv, tyrec, lab) ((pmv).lab)
+#define ATSSELcon(pmv, tycon, lab) (((tycon*)(pmv))->lab)
+
+#define ATSINSmove_con1_beg()
+#define ATSINSmove_con1_new(tmp, tycon) (tmp = ATS_MALLOC(sizeof(tycon)))
+#define ATSINSstore_con1_ofs(tmp, tycon, lab, val) (((tycon*)(tmp))->lab = val)
+#define ATSINSmove_con1_end()
+#define ATSINSfreecon(ptr) ATS_MFREE(ptr)
 
 #define ATSINSmove_fltrec_beg()
 #define ATSINSmove_fltrec_end()
@@ -178,6 +185,12 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_char2int1(c) ((int)(c))
 #define atspre_g0int2int_int_int(x) (x)
 #define atspre_g0int_gt_int(x, y) ((x) > (y))
+#define atspre_g1ofg0_int(x) (x)
+#define atspre_g0ofg1_int(x) (x)
+#define atspre_g1int_gt_int(x, y) ((x) > (y))
+#define atspre_g1int_gte_int(x, y) ((x) >= (y))
+#define atspre_g1int_lte_int(x, y) ((x) <= (y))
+#define atspre_g1int_sub_int(x, y) ((x) - (y))
 
 /* === Closure support (needed for cloref1 lambdas) === */
 
@@ -211,13 +224,8 @@ void *memcpy(void *dst, const void *src, unsigned int n);
 #define ward_promise(...) atstype_ptrk
 #define ward_promise_resolver(...) atstype_ptrk
 
-/* Pointer-sized slot access (for promise struct) */
-static inline void *ward_slot_get(void *p, int i) {
-  return ((void**)p)[i];
-}
-static inline void ward_slot_set(void *p, int i, void *v) {
-  ((void**)p)[i] = v;
-}
+/* Promise chain resolution (implemented in promise.dats) */
+void _ward_resolve_chain(void *p, void *v);
 
 /* Invoke a cloref1 closure: first word is function pointer */
 static inline void *ward_cloref1_invoke(void *clo, void *arg) {
@@ -226,67 +234,30 @@ static inline void *ward_cloref1_invoke(void *clo, void *arg) {
   return fp(clo, arg);
 }
 
-/* Promise chain resolution (monadic bind support).
-   Iteratively resolves a promise and propagates through then-chains.
-   When a callback returns a pending inner promise, wires forwarding. */
-static inline void ward_promise_resolve_chain(void *p, void *v) {
-  void **pp = (void **)p;
-  while (1) {
-    pp[0] = (void*)1;
-    pp[1] = v;
-    void *cb = pp[2];
-    void *chain = pp[3];
-    if (cb && chain) {
-      void *inner = ward_cloref1_invoke(cb, v);
-      void **ip = (void **)inner;
-      if (ip[0]) {
-        v = ip[1];
-        pp = (void **)chain;
-        continue;
-      } else {
-        ip[3] = chain;
-        break;
-      }
-    } else if (chain) {
-      pp = (void **)chain;
-      continue;
-    } else {
-      break;
-    }
-  }
+/* Self-freeing closure wrapper for linear closures (cloptr1).
+   When resolve_chain invokes this via ward_cloref1_invoke, the wrapper
+   invokes the real cloptr1 then frees both it and the wrapper.
+   Layout: [0]=wrapper_fn_ptr, [1]=real_cloptr1 */
+static inline void *_ward_cloptr1_wrapper_invoke(void *wrapper, void *arg) {
+  void **w = (void **)wrapper;
+  void *real_clo = w[1];
+  void *result = ward_cloref1_invoke(real_clo, arg);
+  free(real_clo);
+  free(wrapper);
+  return result;
 }
 
-/* Allocate a zeroed promise struct (4 pointer-sized slots) */
-static inline void *ward_promise_alloc(void) {
-  int sz = 4 * sizeof(void*);
-  void *p = malloc(sz);
-  memset(p, 0, sz);
-  return p;
-}
-
-/* Promise then (monadic bind).
-   Handles both pending and already-resolved input promises. */
-static inline void *ward_promise_then_impl(void *p, void *f) {
-  void *chain = ward_promise_alloc();
-  void **pp = (void **)p;
-  if (pp[0]) {
-    void *inner = ward_cloref1_invoke(f, pp[1]);
-    void **ip = (void **)inner;
-    if (ip[0]) {
-      ((void **)chain)[0] = (void*)1;
-      ((void **)chain)[1] = ip[1];
-    } else {
-      ip[3] = chain;
-    }
-  } else {
-    pp[2] = f;
-    pp[3] = chain;
-  }
-  return chain;
+static inline void *_ward_cloptr1_wrap(void *f) {
+  typedef void *(*cfun)(void *, void *);
+  void **wrapper = (void **)malloc(2 * sizeof(void*));
+  wrapper[0] = (void *)(cfun)_ward_cloptr1_wrapper_invoke;
+  wrapper[1] = f;
+  return (void *)wrapper;
 }
 
 /* DOM helpers */
 #define ward_dom_state(...) atstype_ptrk
+#define ward_dom_stream(...) atstype_ptrk
 static inline void ward_set_byte(void *p, int off, int v) {
   ((unsigned char*)p)[off] = (unsigned char)v;
 }
@@ -302,10 +273,6 @@ static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
 /* Event bridge (WASM imports from JS host) */
 extern void ward_set_timer(int delay_ms, void *resolver_ptr);
 extern void ward_exit(void);
-
-/* DOM state persistence (implemented in runtime.c) */
-void ward_dom_global_set(void *p);
-void *ward_dom_global_get(void);
 
 /* IDB stash (implemented in runtime.c) */
 void ward_idb_stash_set(void *p, int len);

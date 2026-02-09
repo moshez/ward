@@ -139,38 +139,41 @@ extern fun ward_node_init (root_id: int): void = "ext#ward_node_init"
 
 implement ward_node_init (root_id) = let
   val dom = ward_dom_init()
-  val () = ward_dom_store(dom)
 
   (* Exercise ward_log — sync, no promise needed *)
   val log_msg = make_log_msg()
   val () = ward_log(1, log_msg, 9)
 
-  (* --- Flat promise chain: timer → DOM → IDB put → get → delete → timer → exit --- *)
+  (* --- Promise chain: timer -> DOM+IDB -> timer -> exit --- *)
+  (* DOM state is threaded through linear closures (cloptr1) via then,
+     eliminating the need for checkout/redeem. *)
 
   val p1 = ward_timer_set(1000)
 
-  (* Step 1: 1s timer fires — create DOM elements, start IDB put *)
+  (* Step 1: 1s timer fires — capture dom linearly, create DOM elements,
+     run IDB chain nested inside, then clean up dom at the end *)
   val p2 = ward_promise_then<int><int>(p1,
-    lam (x: int) =<cloref1> let
-      val dom = ward_dom_load()
+    llam (x: int) => let
+      (* dom is captured linearly from the enclosing scope *)
+      val s = ward_dom_stream_begin(dom)
 
       val tag_p = make_tag_p()
-      val dom = ward_dom_create_element(dom, 1, root_id, tag_p, 1)
+      val s = ward_dom_stream_create_element(s, 1, root_id, tag_p, 1)
 
       val text_hello = make_text_hello()
-      val dom = ward_dom_set_safe_text(dom, 1, text_hello, 10)
+      val s = ward_dom_stream_set_safe_text(s, 1, text_hello, 10)
 
       val tag_span = make_tag_span()
-      val dom = ward_dom_create_element(dom, 2, root_id, tag_span, 4)
+      val s = ward_dom_stream_create_element(s, 2, root_id, tag_span, 4)
 
       val attr_class = make_attr_class()
       val val_demo = make_val_demo()
-      val dom = ward_dom_set_attr_safe(dom, 2, attr_class, 5, val_demo, 4)
+      val s = ward_dom_stream_set_attr_safe(s, 2, attr_class, 5, val_demo, 4)
 
       val text_works = make_text_works()
-      val dom = ward_dom_set_safe_text(dom, 2, text_works, 8)
+      val s = ward_dom_stream_set_safe_text(s, 2, text_works, 8)
 
-      val () = ward_dom_store(dom)
+      val dom = ward_dom_stream_end(s)
 
       (* Build value array [72,101,108,108,111] = "Hello" *)
       val idb_val = ward_arr_alloc<byte>(5)
@@ -187,34 +190,35 @@ implement ward_node_init (root_id) = let
       val () = ward_arr_drop<byte>(frozen, borrow)
       val idb_val2 = ward_arr_thaw<byte>(frozen)
       val () = ward_arr_free<byte>(idb_val2)
-    in p_put end)
 
-  (* Step 2: IDB put done — start IDB get *)
-  val p3 = ward_promise_then<int><int>(p2,
-    lam (put_status: int) =<cloref1> let
-      val idb_key2 = make_idb_key()
-    in ward_idb_get(idb_key2, 8) end)
+      (* IDB get *)
+      val p_get = ward_promise_then<int><int>(p_put,
+        llam (put_status: int) => let
+          val idb_key2 = make_idb_key()
+        in ward_idb_get(idb_key2, 8) end)
 
-  (* Step 3: IDB get done — retrieve result, start IDB delete *)
-  val p4 = ward_promise_then<int><int>(p3,
-    lam (got_len: int) =<cloref1> let
-      val result = ward_idb_get_result(5)
-      val () = ward_arr_free<byte>(result)
-      val idb_key3 = make_idb_key()
-    in ward_idb_delete(idb_key3, 8) end)
+      (* IDB delete *)
+      val p_del = ward_promise_then<int><int>(p_get,
+        llam (got_len: int) => let
+          val result = ward_idb_get_result(5)
+          val () = ward_arr_free<byte>(result)
+          val idb_key3 = make_idb_key()
+        in ward_idb_delete(idb_key3, 8) end)
 
-  (* Step 4: IDB delete done — set 5s exit timer *)
-  val p5 = ward_promise_then<int><int>(p4,
-    lam (del_status: int) =<cloref1>
-      ward_timer_set(5000))
+      (* Set 5s exit timer *)
+      val p_timer = ward_promise_then<int><int>(p_del,
+        llam (del_status: int) =>
+          ward_timer_set(5000))
 
-  (* Step 5: 5s timer fires — clean up and exit *)
-  val p6 = ward_promise_then<int><int>(p5,
-    lam (x2: int) =<cloref1> let
-      val dom = ward_dom_load()
-      val () = ward_dom_fini(dom)
-      val () = ward_exit()
-    in ward_promise_return<int>(0) end)
+      (* 5s timer fires — clean up dom and exit *)
+      val p_exit = ward_promise_then<int><int>(p_timer,
+        llam (x2: int) => let
+          (* dom is captured linearly from the outer then scope *)
+          val () = ward_dom_fini(dom)
+          val () = ward_exit()
+        in ward_promise_return<int>(0) end)
 
-  val () = ward_promise_discard<int><Pending>(p6)
+    in p_exit end)
+
+  val () = ward_promise_discard<int><Pending>(p2)
 in end

@@ -114,4 +114,28 @@ ward_safe_text_get{n,i}(t, i) =
 implement
 ward_int2byte(i) = $UNSAFE.cast{byte}(i) (* [U3] *)
 
+(*
+ * Array write operations — byte-level, for DOM streaming.
+ * No $UNSAFE needed: inside the local block, ward_arr(byte, l, n) = ptr l,
+ * ward_arr_borrow(byte, ls, n) = ptr ls, ward_safe_text(n) = ptr.
+ * The $extfcall targets (ward_set_byte, ward_set_i32, ward_copy_at) are
+ * C helpers in runtime.h / ward_prelude.h that operate on raw pointers.
+ *)
+
+implement
+ward_arr_write_byte{l}{n}{i}(arr, i, v) =
+  $extfcall(void, "ward_set_byte", arr, i, v)
+
+implement
+ward_arr_write_i32{l}{n}{i}(arr, i, v) =
+  $extfcall(void, "ward_set_i32", arr, i, v)
+
+implement
+ward_arr_write_borrow{ld}{ls}{m}{n}{off}(dst, off_val, src, len) =
+  $extfcall(void, "ward_copy_at", dst, off_val, src, len)
+
+implement
+ward_arr_write_safe_text{l}{m}{n}{off}(dst, off_val, src, len) =
+  $extfcall(void, "ward_copy_at", dst, off_val, src, len)
+
 end (* local *)

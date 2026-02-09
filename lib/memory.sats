@@ -154,3 +154,25 @@ fun ward_safe_text_get
    ============================================================ *)
 
 fun ward_int2byte(i: int): byte
+
+(* ============================================================
+   Array write operations (byte-level, for DOM streaming)
+   ============================================================ *)
+
+fun ward_arr_write_byte
+  {l:agz}{n:nat}{i:nat | i < n}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int): void
+
+fun ward_arr_write_i32
+  {l:agz}{n:nat}{i:nat | i + 4 <= n}
+  (arr: !ward_arr(byte, l, n), i: int i, v: int): void
+
+fun ward_arr_write_borrow
+  {ld:agz}{ls:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, ld, m), off: int off,
+   src: !ward_arr_borrow(byte, ls, n), len: int n): void
+
+fun ward_arr_write_safe_text
+  {l:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, l, m), off: int off,
+   src: ward_safe_text(n), len: int n): void
