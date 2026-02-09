@@ -1,6 +1,6 @@
 (* promise.dats — Linear promise implementation *)
 (* Trusted core. Chain resolution + then via C helpers *)
-(* ward_promise_resolve_chain / ward_promise_then_impl. *)
+(* ward_promise_resolve_chain / ward_promise_then_vt_impl. *)
 
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
@@ -11,7 +11,7 @@ staload _ = "./memory.dats"
  * Promise layout: 4 pointer-sized slots
  *   [0] = state (0=pending, 1=resolved), cast to/from ptr
  *   [1] = value (resolved value, cast to ptr)
- *   [2] = callback (cloref1 or null)
+ *   [2] = callback (self-freeing cloptr1 wrapper, or null)
  *   [3] = chain (downstream promise or null)
  *)
 
@@ -84,7 +84,7 @@ ward_promise_discard(p) = $extfcall(void, "free", p)
 
 implement{a}{b}
 ward_promise_then(p, f) =
-  $extfcall(ptr, "ward_promise_then_impl", p,
+  $extfcall(ptr, "ward_promise_then_vt_impl", p,
             $UNSAFE.castvwtp0{ptr}(f)) (* [U1] *)
 
 end (* local *)

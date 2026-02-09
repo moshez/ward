@@ -72,13 +72,37 @@ static inline void *ward_promise_alloc(void) {
   return p;
 }
 
-/* Promise then (monadic bind).
-   Handles both pending and already-resolved input promises. */
-static inline void *ward_promise_then_impl(void *p, void *f) {
+/* Self-freeing closure wrapper for linear closures (cloptr1).
+   When resolve_chain invokes this via ward_cloref1_invoke, the wrapper
+   invokes the real cloptr1 then frees both it and the wrapper.
+   Layout: [0]=wrapper_fn_ptr, [1]=real_cloptr1 */
+static inline void *_ward_cloptr1_wrapper_invoke(void *wrapper, void *arg) {
+  void **w = (void **)wrapper;
+  void *real_clo = w[1];
+  void *result = ward_cloref1_invoke(real_clo, arg);
+  free(real_clo);
+  free(wrapper);
+  return result;
+}
+
+static inline void *_ward_cloptr1_wrap(void *f) {
+  typedef void *(*cfun)(void *, void *);
+  void **wrapper = (void **)malloc(2 * sizeof(void*));
+  wrapper[0] = (void *)(cfun)_ward_cloptr1_wrapper_invoke;
+  wrapper[1] = f;
+  return (void *)wrapper;
+}
+
+/* Promise then_vt (monadic bind with linear closure).
+   Wraps the cloptr1 in a self-freeing thunk so resolve_chain needs no
+   special logic — it just sees a normal closure. */
+static inline void *ward_promise_then_vt_impl(void *p, void *f) {
   void *chain = ward_promise_alloc();
   void **pp = (void **)p;
   if (pp[0]) {
+    /* Already resolved — invoke and free immediately */
     void *inner = ward_cloref1_invoke(f, pp[1]);
+    free(f);
     void **ip = (void **)inner;
     if (ip[0]) {
       ((void **)chain)[0] = (void*)1;
@@ -87,7 +111,8 @@ static inline void *ward_promise_then_impl(void *p, void *f) {
       ip[3] = chain;
     }
   } else {
-    pp[2] = f;
+    /* Pending — wrap in self-freeing thunk */
+    pp[2] = _ward_cloptr1_wrap(f);
     pp[3] = chain;
   }
   return chain;
@@ -96,12 +121,6 @@ static inline void *ward_promise_then_impl(void *p, void *f) {
 /* DOM helpers */
 #define ward_dom_state(...) atstype_ptrk
 #define ward_dom_stream(...) atstype_ptrk
-#define ward_dom_ticket atstype_ptrk
-
-/* DOM state persistence */
-static void *_ward_dom_stored = 0;
-static inline void ward_dom_global_set(void *p) { _ward_dom_stored = p; }
-static inline void *ward_dom_global_get(void) { return _ward_dom_stored; }
 
 static inline void ward_set_byte(void *p, int off, int v) {
   ((unsigned char*)p)[off] = (unsigned char)v;

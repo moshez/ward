@@ -56,7 +56,6 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_promise_resolver(a)` | Linear write-end, consumed by `resolve` |
 | `ward_dom_state(l)` | Linear DOM diff buffer at address `l` (256KB) |
 | `ward_dom_stream(l)` | Linear stream that accumulates ops, auto-flushes |
-| `ward_dom_ticket` | Non-linear token for async boundaries (captured in closures) |
 
 ### Memory Functions
 
@@ -89,7 +88,7 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_promise_resolve<a>(r, v)` | `(resolver, a) -> void` (consumes resolver) |
 | `ward_promise_extract<a>(p)` | `ward_promise_resolved(a) -> a` |
 | `ward_promise_discard<a>{s}(p)` | `ward_promise(a, s) -> void` |
-| `ward_promise_then<a><b>(p, f)` | `(pending(a), a -<cloref1> b) -> pending(b)` |
+| `ward_promise_then<a><b>(p, f)` | `(pending(a), a -<lin,cloptr1> pending(b)) -> pending(b)` |
 
 ### DOM Functions
 
@@ -97,8 +96,6 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 |----------|-----------|
 | `ward_dom_init()` | `-> [l:agz] ward_dom_state(l)` |
 | `ward_dom_fini(state)` | `ward_dom_state(l) -> void` |
-| `ward_dom_checkout(state)` | `ward_dom_state(l) -> ward_dom_ticket` |
-| `ward_dom_redeem(ticket)` | `ward_dom_ticket -> [l:agz] ward_dom_state(l)` |
 | `ward_dom_stream_begin(state)` | `ward_dom_state(l) -> ward_dom_stream(l)` |
 | `ward_dom_stream_end(stream)` | `ward_dom_stream(l) -> ward_dom_state(l)` |
 | `ward_dom_stream_create_element(s, node_id, parent_id, tag, tag_len)` | Create element with safe text tag |
@@ -126,15 +123,15 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 ### Library (`lib/`)
 - `memory.sats` -- type declarations (the specification): 5 types, 18 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
-- `dom.sats` -- DOM streaming specification: 3 types (state, stream, ticket), 13 functions
-- `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush, no globals)
+- `dom.sats` -- DOM streaming specification: 2 types (state, stream), 11 functions
+- `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush)
 - `promise.sats` -- linear promise specification: datasort, 2 types, 7 functions
 - `promise.dats` -- promise implementation (ward_slot_get/set via $extfcall)
 - `event.sats` -- promise-based timer and exit specification
 - `event.dats` -- timer implementation (erases resolver to ptr for JS host)
 - `ward_bridge.mjs` -- JS bridge: parses binary diff protocol (multi-op loop), applies to DOM
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- bump allocator + memset/memcpy + DOM global state for WASM
+- `runtime.c` -- bump allocator + memset/memcpy for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
@@ -199,9 +196,11 @@ val tail = $UNSAFE.cast{ptr(l+m)}(ptr_add<a>(arr, m))
 
 The following patterns are **never acceptable** as `$UNSAFE` justifications. If you find yourself reaching for one, it means the design needs to change -- use a proper ATS2 data structure instead.
 
-1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. (Exception: `ward_dom_checkout`/`ward_dom_redeem` [U3] uses a C global because the state must cross an async boundary where no ATS2 value can be threaded -- the JS event loop calls back into WASM with no way to pass linear values.)
+1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. For async boundaries, use `ward_promise_then` with linear closures (`cloptr1`) to capture and thread linear state through promise callbacks.
 
 2. **"We need an int-to-ptr cast to store heterogeneous data in a homogeneous container"** -- If a data structure has fields of different types, use `datavtype` which gives type-safe named fields via `@`/`fold@` pattern matching. Do not pack an `int` into a `ptr` slot or vice versa.
+
+3. **"It would take too much effort to do it safely"** -- Effort is never an acceptable reason for `$UNSAFE`. If the safe approach requires a big refactor (new functions in `.sats`, new data structures, rewriting callers), do the refactor. The whole point of ward is that safety is non-negotiable.
 
 ## Freestanding WASM Build
 

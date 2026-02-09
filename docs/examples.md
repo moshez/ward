@@ -133,22 +133,21 @@ in end
 
 ## DOM with async boundaries
 
-Use `checkout`/`redeem` to persist state across promise callbacks.
+Use linear closures (`llam`) in `ward_promise_then` to capture and thread linear DOM state across promise callbacks.
 
 ```ats
 fun async_dom_example (): void = let
   val dom = ward_dom_init()
-  val ticket = ward_dom_checkout(dom)
 
   val p1 = ward_timer_set(1000)
 
   val p2 = ward_promise_then<int><int>(p1,
-    lam (x: int) =<cloref1> let
-      val dom = ward_dom_redeem(ticket)
+    llam (x: int) => let
+      (* dom is captured linearly from enclosing scope *)
       val s = ward_dom_stream_begin(dom)
       (* ... stream ops ... *)
       val dom = ward_dom_stream_end(s)
-      val _ = ward_dom_checkout(dom)
+      val () = ward_dom_fini(dom)
     in ward_promise_return<int>(0) end)
 
   val () = ward_promise_discard<int><Pending>(p2)
@@ -157,7 +156,7 @@ in end
 
 ## Flat promise chain
 
-Timer fires, then immediate value, then exit. All promises are linear -- every one must be consumed.
+Timer fires, then immediate value, then exit. All promises are linear -- every one must be consumed. Closures use `llam` (linear lambda) which can capture linear values and are freed after invocation.
 
 ```ats
 staload "lib/promise.sats"
@@ -169,10 +168,10 @@ fun chain_example (): void = let
   val p1 = ward_timer_set(1000)
 
   val p2 = ward_promise_then<int><int>(p1,
-    lam (x: int) =<cloref1> ward_promise_return<int>(x + 1))
+    llam (x: int) => ward_promise_return<int>(x + 1))
 
   val p3 = ward_promise_then<int><int>(p2,
-    lam (x: int) =<cloref1> let
+    llam (x: int) => let
       val () = ward_exit()
     in ward_promise_return<int>(0) end)
 
@@ -219,7 +218,7 @@ fun idb_example (): void = let
   val key2 = ward_text_done(b)
 
   val p_get = ward_promise_then<int><int>(p_put,
-    lam (_: int) =<cloref1> ward_idb_get(key2, 4))
+    llam (_: int) => ward_idb_get(key2, 4))
 
   val () = ward_promise_discard<int><Pending>(p_get)
 in end

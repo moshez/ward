@@ -70,10 +70,10 @@ val @(p, r) = ward_promise_create<int>()
 val () = ward_promise_resolve<int>(r, 42)  (* consumes r *)
 ```
 
-Chaining uses monadic bind (`ward_promise_then`). The callback receives the resolved value and must return a new pending promise. Use `ward_promise_return` to lift an immediate value:
+Chaining uses monadic bind (`ward_promise_then`). The callback is a linear closure (`cloptr1`) that receives the resolved value, can capture linear values, and must return a new pending promise. The closure is freed after invocation. Use `ward_promise_return` to lift an immediate value:
 
 ```ats
-val p2 = ward_promise_then<int><int>(p, lam (x) => ward_promise_return<int>(x + 1))
+val p2 = ward_promise_then<int><int>(p, llam (x) => ward_promise_return<int>(x + 1))
 ```
 
 No error type parameter. Use `Result(a, e)` as your `a` if you need errors.
@@ -95,22 +95,21 @@ val () = ward_dom_fini(dom)
 
 `stream_begin` consumes the `ward_dom_state` and returns a `ward_dom_stream`. Stream ops accumulate into the buffer. When the buffer fills, the stream auto-flushes and resets the cursor. `stream_end` flushes any remaining ops and returns the `ward_dom_state`.
 
-### Checkout/redeem for async boundaries
+### Linear closure capture for async boundaries
 
-For async boundaries (e.g., timer callbacks), `ward_dom_checkout` stashes the state in a global and returns a non-linear `ward_dom_ticket`. The ticket can be captured in `cloref1` closures. `ward_dom_redeem` recovers the state from the global.
+For async boundaries (e.g., timer callbacks), capture linear DOM state directly in `llam` closures. `ward_promise_then` uses `cloptr1` (linear closures) which can capture linear values and are freed after invocation.
 
 ```ats
 val dom = ward_dom_init()
-val ticket = ward_dom_checkout(dom)
 
 val p = ward_promise_then<int><int>(timer,
-  lam (x: int) =<cloref1> let
-    val dom = ward_dom_redeem(ticket)   (* ticket captured in closure *)
+  llam (x: int) => let
+    (* dom is captured linearly from enclosing scope *)
     val s = ward_dom_stream_begin(dom)
     val s = ward_dom_stream_create_element(s, 1, 0, tag, 1)
     val dom = ward_dom_stream_end(s)
-    val _ = ward_dom_checkout(dom)       (* stash back for next callback *)
-  in ... end)
+    val () = ward_dom_fini(dom)
+  in ward_promise_return<int>(0) end)
 ```
 
 ## The trusted surface

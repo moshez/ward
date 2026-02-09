@@ -32,11 +32,6 @@ void *memcpy(void *dst, const void *src, unsigned int n) {
     return dst;
 }
 
-/* DOM state global — single-instance for ward_dom_checkout/ward_dom_redeem */
-static void *_ward_dom_stored = 0;
-void ward_dom_global_set(void *p) { _ward_dom_stored = p; }
-void *ward_dom_global_get(void) { return _ward_dom_stored; }
-
 /* IDB result stash — JS stores malloc'd ptr here, ATS2 recovers via ward_idb_get_result */
 static void *_ward_idb_stash_ptr = 0;
 static int _ward_idb_stash_len = 0;

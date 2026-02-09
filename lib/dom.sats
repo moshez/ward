@@ -11,9 +11,6 @@ absvtype ward_dom_state(l:addr)
 (* DOM stream — linear, accumulates ops, auto-flushes when full *)
 absvtype ward_dom_stream(l:addr)
 
-(* DOM ticket — non-linear token for async boundaries *)
-abstype ward_dom_ticket
-
 (* Diff buffer capacity *)
 stadef WARD_DOM_BUF_CAP = 262144
 #define WARD_DOM_BUF_CAP_DYN 262144
@@ -27,17 +24,6 @@ fun ward_dom_fini
   {l:agz}
   (state: ward_dom_state(l))
   : void
-
-(* --- Async boundary (2) --- *)
-
-fun ward_dom_checkout
-  {l:agz}
-  (state: ward_dom_state(l))
-  : ward_dom_ticket
-
-fun ward_dom_redeem
-  (ticket: ward_dom_ticket)
-  : [l:agz] ward_dom_state(l)
 
 (* --- Stream lifecycle (2) --- *)
 

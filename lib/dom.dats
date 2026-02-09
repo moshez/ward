@@ -1,7 +1,7 @@
 (* dom.dats — Ward DOM implementation with streaming *)
 (* Trusted core: writes diff protocol bytes to owned buffer, flushes to bridge.
    Stream API batches multiple ops into 256KB buffer, auto-flushes when full.
-   Stream is a datavtype carrying {buf: ptr, cursor: int}. *)
+   Stream is a datavtype carrying {buf: ward_arr(byte), cursor: int}. *)
 
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
@@ -12,40 +12,40 @@ staload _ = "./memory.dats"
 extern fun _ward_dom_flush
   (buf: ptr, len: int): void = "mac#ward_dom_flush"
 
-(* Allocator *)
-extern fun _ward_malloc_bytes
-  (n: int): [l:agz] ptr l = "mac#malloc"
-
 local
 
 datavtype stream_vt(l:addr) =
-  | {l:agz} stream_mk(l) of (ptr l, int(*cursor*))
+  | {l:agz} stream_mk(l) of (ward_arr(byte, l, WARD_DOM_BUF_CAP), int(*cursor*))
 
 assume ward_dom_state(l) = ptr l
 assume ward_dom_stream(l) = stream_vt(l)
-assume ward_dom_ticket = ptr         (* zero-cost dummy *)
 
 in
 
 (*
  * $UNSAFE justifications — each use is marked with its pattern tag.
  *
- * [U1] cast{ptr}(tag) for ward_safe_text -> ptr (create_element, set_attr):
- *   ward_safe_text is abstype assumed as ptr in memory.dats, but that
- *   assumption is invisible from this module (cross-module abstraction).
+ * [RT1] castvwtp1{ptr}(buf) in _flush_arr:
+ *   Extracts raw pointer from ward_arr(byte) to pass to ward_dom_flush.
+ *   This crosses the WASM/JS runtime boundary — ward_dom_flush is a host
+ *   import that requires a raw pointer. No ATS2-level alternative exists
+ *   because the host API is defined in terms of raw memory addresses.
  *
- * [U2] castvwtp1{ptr}(text/value) for ward_arr_borrow -> ptr
- *   (set_text, set_attr, set_style):
- *   Same cross-module barrier. castvwtp1 preserves the borrow.
- *
- * [U3] ward_dom_checkout / ward_dom_redeem:
- *   Erases/recovers ward_dom_state to/from ptr via global storage.
- *
- * No $UNSAFE needed for stream data access — datavtype provides
- * type-safe field access via @/fold@ pattern matching.
+ * No other $UNSAFE uses. All buffer writes go through ward_arr_write_byte,
+ * ward_arr_write_i32, ward_arr_write_borrow, and ward_arr_write_safe_text
+ * which are bounds-checked in memory.sats and implemented in memory.dats.
  *)
 
+(* --- Runtime boundary helper --- *)
+
+fn _flush_arr{l:agz}
+  (buf: !ward_arr(byte, l, WARD_DOM_BUF_CAP), len: int): void =
+  _ward_dom_flush($UNSAFE.castvwtp1{ptr}(buf), len) (* [RT1] *)
+
 (* --- Lifecycle --- *)
+
+extern fun _ward_malloc_bytes
+  (n: int): [l:agz] ptr l = "mac#malloc"
 
 implement
 ward_dom_init() = _ward_malloc_bytes(4)  (* lightweight token *)
@@ -53,75 +53,55 @@ ward_dom_init() = _ward_malloc_bytes(4)  (* lightweight token *)
 implement
 ward_dom_fini{l}(state) = $extfcall(void, "free", state)
 
-(* --- Async boundary --- *)
-
-implement
-ward_dom_checkout{l}(state) = let
-  val () = $extfcall(void, "ward_dom_global_set", state)
-in $UNSAFE.cast{ward_dom_ticket}(0) end (* [U3] *)
-
-implement
-ward_dom_redeem(ticket) = let
-  val _ = ticket
-  val p = $extfcall(ptr, "ward_dom_global_get")
-in $UNSAFE.cast{[l:agz] ptr l}(p) end (* [U3] *)
-
-(* --- Stream helpers --- *)
-
-fn _ward_stream_buf{l:agz}(stream: !stream_vt(l)): ptr = let
-  val+ @stream_mk(buf, _) = stream
-  val b = buf
-  prval () = fold@(stream)
-in b end
-
-fn _ward_stream_cursor{l:agz}(stream: !stream_vt(l)): int = let
-  val+ @stream_mk(_, cursor) = stream
-  val c = cursor
-  prval () = fold@(stream)
-in c end
-
-fn _ward_stream_set_cursor{l:agz}(stream: !stream_vt(l), c: int): void = let
-  val+ @stream_mk(_, cursor) = stream
-  val () = cursor := c
-  prval () = fold@(stream)
-in end
-
-fn _ward_stream_auto_flush{l:agz}(stream: !stream_vt(l), needed: int): int = let
-  val+ @stream_mk(buf, cursor) = stream
-  val b = buf
-  val c = cursor
-in
-  if c + needed > WARD_DOM_BUF_CAP_DYN then let
-    val () = _ward_dom_flush(b, c)
-    val () = cursor := 0
-    prval () = fold@(stream)
-  in 0 end
-  else let
-    prval () = fold@(stream)
-  in c end
-end
-
 (* --- Stream lifecycle --- *)
 
 implement
 ward_dom_stream_begin{l}(state) = let
   val () = $extfcall(void, "free", state)  (* free state token *)
-  val buf = _ward_malloc_bytes(WARD_DOM_BUF_CAP_DYN)
+  val buf = ward_arr_alloc<byte>(WARD_DOM_BUF_CAP_DYN)
 in stream_mk(buf, 0) end
 
 implement
 ward_dom_stream_end{l}(stream) = let
-  val+ ~stream_mk(buf, c) = stream  (* consume stream, extract fields *)
-  val () = if c > 0 then _ward_dom_flush(buf, c)
-  val () = $extfcall(void, "free", buf)
-in _ward_malloc_bytes(4) end (* new state token *)
+  val+ ~stream_mk(buf, c) = stream
+  val () = if c > 0 then _flush_arr(buf, c)
+  val () = ward_arr_free<byte>(buf)
+in _ward_malloc_bytes(4) end
+
+(* --- Auto-flush helper ---
+   Returns a dependent cursor guaranteed to have room for 'needed' bytes.
+   Flushes and resets to 0 if current cursor + needed exceeds capacity. *)
+
+fn _ward_stream_auto_flush
+  {l:agz}{needed:pos | needed <= WARD_DOM_BUF_CAP}
+  (stream: !stream_vt(l), needed: int needed)
+  : [c:nat | c + needed <= WARD_DOM_BUF_CAP] int(c) = let
+  val+ @stream_mk(buf, cursor) = stream
+  val c0 = cursor
+  val c1 = g1ofg0(c0)
+in
+  if c1 + needed > WARD_DOM_BUF_CAP_DYN then let
+    val () = _flush_arr(buf, c0)
+    val () = cursor := 0
+    prval () = fold@(stream)
+  in 0 end
+  else if c1 >= 0 then let
+    prval () = fold@(stream)
+  in c1 end
+  else let
+    (* unreachable: cursor is always >= 0 *)
+    val () = _flush_arr(buf, c0)
+    val () = cursor := 0
+    prval () = fold@(stream)
+  in 0 end
+end
 
 (*
  * Diff protocol (little-endian):
  *   CREATE_ELEMENT: [1:op=4] [4:node_id] [4:parent_id] [1:tag_len] [tag_data]
  *   SET_TEXT:       [1:op=1] [4:node_id] [1:lo] [1:hi]  [text_data]
  *   SET_ATTR:       [1:op=2] [4:node_id] [1:name_len]   [name_data]
- *                                        [1:lo] [1:hi]  [value_data]
+ *                                         [1:lo] [1:hi]  [value_data]
  *   REMOVE_CHILDREN:[1:op=3] [4:node_id]
  *)
 
@@ -130,87 +110,81 @@ in _ward_malloc_bytes(4) end (* new state token *)
 implement
 ward_dom_stream_create_element{l}{tl}
   (stream, node_id, parent_id, tag, tag_len) = let
-  val tl: int = tag_len
-  val op_size = 10 + tl
+  val op_size = 10 + tag_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 4)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 5, parent_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 9, tl)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 10,
-                     $UNSAFE.cast{ptr}(tag), tl) (* [U1] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 4)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_i32(buf, c + 5, parent_id)
+  val () = ward_arr_write_byte(buf, c + 9, tag_len)
+  val () = ward_arr_write_safe_text(buf, c + 10, tag, tag_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 implement
 ward_dom_stream_set_text{l}{lb}{tl}
   (stream, node_id, text, text_len) = let
-  val tl: int = text_len
-  val op_size = 7 + tl
+  val op_size = 7 + text_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 1)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 5, tl)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 6, 0)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 7,
-                     $UNSAFE.castvwtp1{ptr}(text), tl) (* [U2] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 1)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_byte(buf, c + 5, text_len)
+  val () = ward_arr_write_byte(buf, c + 6, 0)
+  val () = ward_arr_write_borrow(buf, c + 7, text, text_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 implement
 ward_dom_stream_set_attr{l}{lb}{nl}{vl}
   (stream, node_id, attr_name, name_len, value, value_len) = let
-  val nl: int = name_len
-  val vl: int = value_len
-  val op_size = 6 + nl + 2 + vl
+  val op_size = 6 + name_len + 2 + value_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 2)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 5, nl)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 6,
-                     $UNSAFE.cast{ptr}(attr_name), nl) (* [U1] *)
-  val off = c + 6 + nl
-  val () = $extfcall(void, "ward_set_byte", buf, off, vl)
-  val () = $extfcall(void, "ward_set_byte", buf, off + 1, 0)
-  val () = $extfcall(void, "ward_copy_at", buf, off + 2,
-                     $UNSAFE.castvwtp1{ptr}(value), vl) (* [U2] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 2)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_byte(buf, c + 5, name_len)
+  val () = ward_arr_write_safe_text(buf, c + 6, attr_name, name_len)
+  val off = c + 6 + name_len
+  val () = ward_arr_write_byte(buf, off, value_len)
+  val () = ward_arr_write_byte(buf, off + 1, 0)
+  val () = ward_arr_write_borrow(buf, off + 2, value, value_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 implement
 ward_dom_stream_set_style{l}{lb}{vl}
   (stream, node_id, value, value_len) = let
-  val vl: int = value_len
-  val op_size = 13 + vl
+  val op_size = 13 + value_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
+  val+ @stream_mk(buf, cursor) = stream
   (* Hardcoded "style" = 115 116 121 108 101 *)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 2)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 5, 5)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 6, 115)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 7, 116)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 8, 121)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 9, 108)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 10, 101)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 11, vl)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 12, 0)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 13,
-                     $UNSAFE.castvwtp1{ptr}(value), vl) (* [U2] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val () = ward_arr_write_byte(buf, c, 2)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_byte(buf, c + 5, 5)
+  val () = ward_arr_write_byte(buf, c + 6, 115)
+  val () = ward_arr_write_byte(buf, c + 7, 116)
+  val () = ward_arr_write_byte(buf, c + 8, 121)
+  val () = ward_arr_write_byte(buf, c + 9, 108)
+  val () = ward_arr_write_byte(buf, c + 10, 101)
+  val () = ward_arr_write_byte(buf, c + 11, value_len)
+  val () = ward_arr_write_byte(buf, c + 12, 0)
+  val () = ward_arr_write_borrow(buf, c + 13, value, value_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 implement
 ward_dom_stream_remove_children{l}(stream, node_id) = let
-  val op_size = 5
-  val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 3)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val c = _ward_stream_auto_flush{l}{5}(stream, 5)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 3)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = cursor := g0ofg1(c + 5)
+  prval () = fold@(stream)
 in stream end
 
 (* --- Safe text stream variants --- *)
@@ -218,38 +192,34 @@ in stream end
 implement
 ward_dom_stream_set_safe_text{l}{tl}
   (stream, node_id, text, text_len) = let
-  val tl: int = text_len
-  val op_size = 7 + tl
+  val op_size = 7 + text_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 1)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 5, tl)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 6, 0)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 7,
-                     $UNSAFE.cast{ptr}(text), tl) (* [U1] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 1)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_byte(buf, c + 5, text_len)
+  val () = ward_arr_write_byte(buf, c + 6, 0)
+  val () = ward_arr_write_safe_text(buf, c + 7, text, text_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 implement
 ward_dom_stream_set_attr_safe{l}{nl}{vl}
   (stream, node_id, attr_name, name_len, value, value_len) = let
-  val nl: int = name_len
-  val vl: int = value_len
-  val op_size = 6 + nl + 2 + vl
+  val op_size = 6 + name_len + 2 + value_len
   val c = _ward_stream_auto_flush(stream, op_size)
-  val buf = _ward_stream_buf(stream)
-  val () = $extfcall(void, "ward_set_byte", buf, c, 2)
-  val () = $extfcall(void, "ward_set_i32", buf, c + 1, node_id)
-  val () = $extfcall(void, "ward_set_byte", buf, c + 5, nl)
-  val () = $extfcall(void, "ward_copy_at", buf, c + 6,
-                     $UNSAFE.cast{ptr}(attr_name), nl) (* [U1] *)
-  val off = c + 6 + nl
-  val () = $extfcall(void, "ward_set_byte", buf, off, vl)
-  val () = $extfcall(void, "ward_set_byte", buf, off + 1, 0)
-  val () = $extfcall(void, "ward_copy_at", buf, off + 2,
-                     $UNSAFE.cast{ptr}(value), vl) (* [U1] *)
-  val () = _ward_stream_set_cursor(stream, c + op_size)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 2)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = ward_arr_write_byte(buf, c + 5, name_len)
+  val () = ward_arr_write_safe_text(buf, c + 6, attr_name, name_len)
+  val off = c + 6 + name_len
+  val () = ward_arr_write_byte(buf, off, value_len)
+  val () = ward_arr_write_byte(buf, off + 1, 0)
+  val () = ward_arr_write_safe_text(buf, off + 2, value, value_len)
+  val () = cursor := g0ofg1(c + op_size)
+  prval () = fold@(stream)
 in stream end
 
 end (* local *)

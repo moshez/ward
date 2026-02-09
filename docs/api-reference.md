@@ -112,7 +112,6 @@ fun ward_int2byte(i: int): byte
 |------|------|-------------|
 | `ward_dom_state(l)` | linear | DOM diff buffer at address `l` (256KB) |
 | `ward_dom_stream(l)` | linear | Accumulates ops, auto-flushes when full |
-| `ward_dom_ticket` | non-linear | Token for async boundaries (captured in closures) |
 
 ### Functions
 
@@ -122,15 +121,6 @@ fun ward_int2byte(i: int): byte
 fun ward_dom_init (): [l:agz] ward_dom_state(l)
 fun ward_dom_fini {l:agz} (state: ward_dom_state(l)): void
 ```
-
-#### Async boundary (2)
-
-```ats
-fun ward_dom_checkout {l:agz} (state: ward_dom_state(l)): ward_dom_ticket
-fun ward_dom_redeem (ticket: ward_dom_ticket): [l:agz] ward_dom_state(l)
-```
-
-`ward_dom_ticket` is non-linear (`abstype`) so it can be captured in `cloref1` closures for promise callbacks. At runtime it erases to `(void*)0`.
 
 #### Stream lifecycle (2)
 
@@ -201,20 +191,20 @@ Convenience aliases: `ward_promise_pending(a)` = `ward_promise(a, Pending)`, `wa
 
 ```ats
 (* Creation *)
-fun{a:t@ype} ward_promise_create (): @(ward_promise_pending(a), ward_promise_resolver(a))
-fun{a:t@ype} ward_promise_resolved (v: a): ward_promise_resolved(a)
-fun{a:t@ype} ward_promise_return (v: a): ward_promise_pending(a)
+fun{a:vt@ype} ward_promise_create (): @(ward_promise_pending(a), ward_promise_resolver(a))
+fun{a:vt@ype} ward_promise_resolved (v: a): ward_promise_resolved(a)
+fun{a:vt@ype} ward_promise_return (v: a): ward_promise_pending(a)
 
 (* Resolution -- consumes the resolver *)
-fun{a:t@ype} ward_promise_resolve (r: ward_promise_resolver(a), v: a): void
+fun{a:vt@ype} ward_promise_resolve (r: ward_promise_resolver(a), v: a): void
 
 (* Consumption *)
-fun{a:t@ype} ward_promise_extract (p: ward_promise_resolved(a)): a
-fun{a:t@ype} {s:PromiseState} ward_promise_discard (p: ward_promise(a, s)): void
+fun{a:vt@ype} ward_promise_extract (p: ward_promise_resolved(a)): a
+fun{a:vt@ype} {s:PromiseState} ward_promise_discard (p: ward_promise(a, s)): void
 
-(* Monadic bind *)
-fun{a:t@ype} {b:t@ype} ward_promise_then
-  (p: ward_promise_pending(a), f: a -<cloref1> ward_promise_pending(b))
+(* Monadic bind -- linear closure, freed after invocation *)
+fun{a:vt@ype}{b:vt@ype} ward_promise_then
+  (p: ward_promise_pending(a), f: (a) -<lin,cloptr1> ward_promise_pending(b))
   : ward_promise_pending(b)
 ```
 
