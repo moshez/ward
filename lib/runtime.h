@@ -224,57 +224,14 @@ void *memcpy(void *dst, const void *src, unsigned int n);
 #define ward_promise(...) atstype_ptrk
 #define ward_promise_resolver(...) atstype_ptrk
 
-/* Pointer-sized slot access (for promise struct) */
-static inline void *ward_slot_get(void *p, int i) {
-  return ((void**)p)[i];
-}
-static inline void ward_slot_set(void *p, int i, void *v) {
-  ((void**)p)[i] = v;
-}
+/* Promise chain resolution (implemented in promise.dats) */
+void _ward_resolve_chain(void *p, void *v);
 
 /* Invoke a cloref1 closure: first word is function pointer */
 static inline void *ward_cloref1_invoke(void *clo, void *arg) {
   typedef void *(*cfun)(void *clo, void *arg);
   cfun fp = *(cfun*)clo;
   return fp(clo, arg);
-}
-
-/* Promise chain resolution (monadic bind support).
-   Iteratively resolves a promise and propagates through then-chains.
-   When a callback returns a pending inner promise, wires forwarding. */
-static inline void ward_promise_resolve_chain(void *p, void *v) {
-  void **pp = (void **)p;
-  while (1) {
-    pp[0] = (void*)1;
-    pp[1] = v;
-    void *cb = pp[2];
-    void *chain = pp[3];
-    if (cb && chain) {
-      void *inner = ward_cloref1_invoke(cb, v);
-      void **ip = (void **)inner;
-      if (ip[0]) {
-        v = ip[1];
-        pp = (void **)chain;
-        continue;
-      } else {
-        ip[3] = chain;
-        break;
-      }
-    } else if (chain) {
-      pp = (void **)chain;
-      continue;
-    } else {
-      break;
-    }
-  }
-}
-
-/* Allocate a zeroed promise struct (4 pointer-sized slots) */
-static inline void *ward_promise_alloc(void) {
-  int sz = 4 * sizeof(void*);
-  void *p = malloc(sz);
-  memset(p, 0, sz);
-  return p;
 }
 
 /* Self-freeing closure wrapper for linear closures (cloptr1).
@@ -296,31 +253,6 @@ static inline void *_ward_cloptr1_wrap(void *f) {
   wrapper[0] = (void *)(cfun)_ward_cloptr1_wrapper_invoke;
   wrapper[1] = f;
   return (void *)wrapper;
-}
-
-/* Promise then_vt (monadic bind with linear closure).
-   Wraps the cloptr1 in a self-freeing thunk so resolve_chain needs no
-   special logic — it just sees a normal closure. */
-static inline void *ward_promise_then_vt_impl(void *p, void *f) {
-  void *chain = ward_promise_alloc();
-  void **pp = (void **)p;
-  if (pp[0]) {
-    /* Already resolved — invoke and free immediately */
-    void *inner = ward_cloref1_invoke(f, pp[1]);
-    free(f);
-    void **ip = (void **)inner;
-    if (ip[0]) {
-      ((void **)chain)[0] = (void*)1;
-      ((void **)chain)[1] = ip[1];
-    } else {
-      ip[3] = chain;
-    }
-  } else {
-    /* Pending — wrap in self-freeing thunk */
-    pp[2] = _ward_cloptr1_wrap(f);
-    pp[3] = chain;
-  }
-  return chain;
 }
 
 /* DOM helpers */
