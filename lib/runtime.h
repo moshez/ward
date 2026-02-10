@@ -191,6 +191,7 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g1int_gte_int(x, y) ((x) >= (y))
 #define atspre_g1int_lte_int(x, y) ((x) <= (y))
 #define atspre_g1int_sub_int(x, y) ((x) - (y))
+#define atspre_g1int_neg_int(x) (-(x))
 #define atspre_g0int_gte_int(x, y) ((x) >= (y))
 #define atspre_g0int_lte_int(x, y) ((x) <= (y))
 #define atspre_g0int_eq_int(x, y) ((x) == (y))
