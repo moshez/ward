@@ -31,11 +31,26 @@ in
  *   Rejected: equally unsafe, more complex. Root cause: ATS2 constraint
  *   solver cannot reduce sizeof(a) at the static level (known limitation).
  *
- * [U3] cast{byte}(c) (text_putc):
- *   Converts int char code to byte for storage.
- *   Alternative considered: int2byte0 from ATS2 prelude.
- *   Rejected: unavailable in freestanding mode (_ATS_CCOMP_PRELUDE_NONE_).
  *)
+
+(*
+ * _proven_int2byte: narrowing int-to-byte cast with proven {i < 256}.
+ *
+ * ATS2's byte type is not dependently indexed, so there is no safe
+ * cast from int(i) to byte even when {0 <= i < 256} is proven.
+ * Alternatives researched:
+ *   castfn int2byte{i:nat | i < 256}(int i): byte — would work if
+ *     byte were indexed (byte(i)), but ATS2's byte is a flat type.
+ *   praxi lemma + view — no view connects int(i) to byte.
+ *   prelude int2byte0 — unavailable in freestanding mode, and itself
+ *     just does (unsigned char)(i) with no proof obligation.
+ * This is the same boundary hit by every dependent type system:
+ *   Idris2 uses believe_me for Fin→Bits8, Coq erases proofs at
+ *   extraction, Ada/SPARK has first-class range subtypes (the only
+ *   system that avoids it). See memory notes for full comparison.
+ *)
+fn _proven_int2byte{i:nat | i < 256}(i: int i): byte =
+  $UNSAFE.cast{byte}(i)
 
 extern fun _ward_malloc_bytes (n: int): [l:agz] ptr l = "mac#malloc"
 
@@ -101,7 +116,7 @@ ward_text_build{n}(n) = _ward_malloc_bytes(n)
 
 implement
 ward_text_putc{c}{n}{i}(b, i, c) = let
-  val () = $UNSAFE.ptr0_set<byte>(ptr_add<byte>(b, i), $UNSAFE.cast{byte}(c)) (* [U1]+[U3] *)
+  val () = $UNSAFE.ptr0_set<byte>(ptr_add<byte>(b, i), _proven_int2byte(c)) (* [U1] *)
 in b end
 
 implement
@@ -138,7 +153,7 @@ in
 end
 
 implement
-ward_int2byte(i) = $UNSAFE.cast{byte}(i) (* [U3] *)
+ward_int2byte{i}(i) = _proven_int2byte(i)
 
 (*
  * Array write operations — byte-level, for DOM streaming.

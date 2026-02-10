@@ -196,11 +196,15 @@ val tail = $UNSAFE.cast{ptr(l+m)}(ptr_add<a>(arr, m))
 
 The following patterns are **never acceptable** as `$UNSAFE` justifications. If you find yourself reaching for one, it means the design needs to change -- use a proper ATS2 data structure instead.
 
+**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, `praxi`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected.
+
 1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. For async boundaries, use `ward_promise_then` with linear closures (`cloptr1`) to capture and thread linear state through promise callbacks.
 
 2. **"We need an int-to-ptr cast to store heterogeneous data in a homogeneous container"** -- If a data structure has fields of different types, use `datavtype` which gives type-safe named fields via `@`/`fold@` pattern matching. Do not pack an `int` into a `ptr` slot or vice versa.
 
 3. **"It would take too much effort to do it safely"** -- Effort is never an acceptable reason for `$UNSAFE`. If the safe approach requires a big refactor (new functions in `.sats`, new data structures, rewriting callers), do the refactor. The whole point of ward is that safety is non-negotiable.
+
+4. **"The prelude function isn't available in freestanding mode"** -- If ATS2's prelude provides a safe function (e.g. `byte2int0`, `int2byte0`) that's missing in freestanding WASM mode, add a `#define atspre_<name>` macro to `runtime.h`. Do not use `$UNSAFE.cast` to work around a missing prelude macro.
 
 ## Freestanding WASM Build
 

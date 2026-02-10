@@ -165,7 +165,7 @@ fun ward_text_from_bytes
    Utility — int to byte conversion (freestanding)
    ============================================================ *)
 
-fun ward_int2byte(i: int): byte
+fun ward_int2byte{i:nat | i < 256}(i: int i): byte
 
 (* ============================================================
    Array write operations (byte-level, for DOM streaming)
