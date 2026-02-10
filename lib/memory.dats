@@ -27,9 +27,8 @@ in
  *
  * [U2] cast{ptr(l+m)} (split, borrow_split):
  *   Casts ptr_add<a> result to statically-typed address ptr(l+m).
- *   Alternative considered: praxi proof of address equality.
- *   Rejected: equally unsafe, more complex. Root cause: ATS2 constraint
- *   solver cannot reduce sizeof(a) at the static level (known limitation).
+ *   Root cause: ATS2 constraint solver cannot reduce sizeof(a) at the
+ *   static level (known limitation). No safe alternative exists.
  *
  *)
 
@@ -41,7 +40,6 @@ in
  * Alternatives researched:
  *   castfn int2byte{i:nat | i < 256}(int i): byte — would work if
  *     byte were indexed (byte(i)), but ATS2's byte is a flat type.
- *   praxi lemma + view — no view connects int(i) to byte.
  *   prelude int2byte0 — unavailable in freestanding mode, and itself
  *     just does (unsigned char)(i) with no proof obligation.
  * This is the same boundary hit by every dependent type system:
