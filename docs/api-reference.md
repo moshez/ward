@@ -218,7 +218,7 @@ fun{a:vt@ype}{b:vt@ype} ward_promise_then
 
 ```ats
 fun ward_timer_set (delay_ms: int): ward_promise_pending(int)
-fun ward_timer_fire (resolver_ptr: ptr): void = "ext#ward_timer_fire"   (* WASM export *)
+fun ward_timer_fire (resolver_id: int): void = "ext#ward_timer_fire"   (* WASM export *)
 fun ward_exit (): void = "mac#ward_exit"
 ```
 
@@ -249,8 +249,8 @@ fun ward_idb_delete {kn:pos}
   : ward_promise_pending(int)
 
 (* WASM exports *)
-fun ward_idb_fire (resolver_ptr: ptr, status: int): void = "ext#ward_idb_fire"
-fun ward_idb_fire_get (resolver_ptr: ptr, data_ptr: ptr, data_len: int): void = "ext#ward_idb_fire_get"
+fun ward_idb_fire (resolver_id: int, status: int): void = "ext#ward_idb_fire"
+fun ward_idb_fire_get (resolver_id: int, data_len: int): void = "ext#ward_idb_fire_get"
 ```
 
 ---
@@ -355,7 +355,7 @@ fun ward_fetch_get_body {n:pos} (len: int n): [l:agz] ward_arr(byte, l, n)
 
 (* WASM export *)
 fun ward_on_fetch_complete
-  (resolver_ptr: ptr, status: int, body_ptr: ptr, body_len: int): void = "ext#ward_on_fetch_complete"
+  (resolver_id: int, status: int, body_len: int): void = "ext#ward_on_fetch_complete"
 ```
 
 ---
@@ -373,7 +373,7 @@ fun ward_clipboard_write_text {n:nat}
 
 (* WASM export *)
 fun ward_on_clipboard_complete
-  (resolver_ptr: ptr, success: int): void = "ext#ward_on_clipboard_complete"
+  (resolver_id: int, success: int): void = "ext#ward_on_clipboard_complete"
 ```
 
 ---
@@ -393,7 +393,7 @@ fun ward_file_close (handle: int): void
 
 (* WASM export *)
 fun ward_on_file_open
-  (resolver_ptr: ptr, handle: int, size: int): void = "ext#ward_on_file_open"
+  (resolver_id: int, handle: int, size: int): void = "ext#ward_on_file_open"
 ```
 
 ---
@@ -416,7 +416,7 @@ fun ward_blob_free (handle: int): void
 
 (* WASM export *)
 fun ward_on_decompress_complete
-  (resolver_ptr: ptr, handle: int, decompressed_len: int): void = "ext#ward_on_decompress_complete"
+  (resolver_id: int, handle: int, decompressed_len: int): void = "ext#ward_on_decompress_complete"
 ```
 
 ---
@@ -445,7 +445,7 @@ fun ward_push_get_subscription ()
 
 (* WASM exports *)
 fun ward_on_permission_result
-  (resolver_ptr: ptr, granted: int): void = "ext#ward_on_permission_result"
+  (resolver_id: int, granted: int): void = "ext#ward_on_permission_result"
 fun ward_on_push_subscribe
-  (resolver_ptr: ptr, json_ptr: ptr, json_len: int): void = "ext#ward_on_push_subscribe"
+  (resolver_id: int, json_len: int): void = "ext#ward_on_push_subscribe"
 ```
