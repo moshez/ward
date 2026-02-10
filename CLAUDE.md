@@ -78,6 +78,7 @@ All functions prefixed `ward_` for easy auditing. No raw pointer extraction -- s
 | `ward_text_putc(b, i, c)` | `{SAFE_CHAR(c)} -> ward_text_builder(n, i+1)` |
 | `ward_text_done(b)` | `ward_text_builder(n, n) -> ward_safe_text(n)` |
 | `ward_safe_text_get(t, i)` | Read byte `i` from safe text |
+| `ward_bridge_recv(stash_id, len)` | `{n:pos} -> [l:agz] ward_arr(byte, l, n)` (pull data from JS stash) |
 
 ### Promise Functions
 
@@ -121,17 +122,29 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 ## Files
 
 ### Library (`lib/`)
-- `memory.sats` -- type declarations (the specification): 5 types, 18 functions
+- `memory.sats` -- type declarations (the specification): 6 types, 24 functions
 - `memory.dats` -- implementations (the "unsafe core" behind the safe interface)
 - `dom.sats` -- DOM streaming specification: 2 types (state, stream), 11 functions
 - `dom.dats` -- DOM streaming implementation (datavtype stream, auto-flush)
 - `promise.sats` -- linear promise specification: datasort, 2 types, 7 functions
-- `promise.dats` -- promise implementation (ward_slot_get/set via $extfcall)
+- `promise.dats` -- promise implementation (datavtype with @/fold@ field access)
 - `event.sats` -- promise-based timer and exit specification
 - `event.dats` -- timer implementation (erases resolver to ptr for JS host)
-- `ward_bridge.mjs` -- JS bridge: parses binary diff protocol (multi-op loop), applies to DOM
+- `idb.sats` / `idb.dats` -- IndexedDB key-value storage
+- `fetch.sats` / `fetch.dats` -- network fetch bridge
+- `listener.sats` / `listener.dats` -- DOM event listeners
+- `callback.sats` / `callback.dats` -- general-purpose callback registry
+- `xml.sats` / `xml.dats` -- cursor-based XML/HTML reader over binary SAX format
+- `clipboard.sats` / `clipboard.dats` -- clipboard write bridge
+- `file.sats` / `file.dats` -- file open/read bridge
+- `decompress.sats` / `decompress.dats` -- decompression bridge
+- `notify.sats` / `notify.dats` -- push notification bridge
+- `nav.sats` / `nav.dats` -- URL navigation bridge
+- `window.sats` / `window.dats` -- window focus, visibility, logging
+- `dom_read.sats` / `dom_read.dats` -- DOM measurement and query
+- `ward_bridge.mjs` -- JS bridge: binary diff protocol, event listeners, data stash, HTML parsing
 - `runtime.h` -- freestanding WASM runtime: ATS2 macro infrastructure + ward type definitions
-- `runtime.c` -- bump allocator + memset/memcpy for WASM
+- `runtime.c` -- free-list allocator (size classes: 32/128/512/4096 + oversized) for WASM
 - `ward_prelude.h` -- native build: ward type macros for gcc
 
 ### Exerciser (`exerciser/`)
@@ -196,11 +209,15 @@ val tail = $UNSAFE.cast{ptr(l+m)}(ptr_add<a>(arr, m))
 
 The following patterns are **never acceptable** as `$UNSAFE` justifications. If you find yourself reaching for one, it means the design needs to change -- use a proper ATS2 data structure instead.
 
+**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected.
+
 1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. For async boundaries, use `ward_promise_then` with linear closures (`cloptr1`) to capture and thread linear state through promise callbacks.
 
 2. **"We need an int-to-ptr cast to store heterogeneous data in a homogeneous container"** -- If a data structure has fields of different types, use `datavtype` which gives type-safe named fields via `@`/`fold@` pattern matching. Do not pack an `int` into a `ptr` slot or vice versa.
 
 3. **"It would take too much effort to do it safely"** -- Effort is never an acceptable reason for `$UNSAFE`. If the safe approach requires a big refactor (new functions in `.sats`, new data structures, rewriting callers), do the refactor. The whole point of ward is that safety is non-negotiable.
+
+4. **"The prelude function isn't available in freestanding mode"** -- If ATS2's prelude provides a safe function (e.g. `byte2int0`, `int2byte0`) that's missing in freestanding WASM mode, add a `#define atspre_<name>` macro to `runtime.h`. Do not use `$UNSAFE.cast` to work around a missing prelude macro.
 
 ## Freestanding WASM Build
 

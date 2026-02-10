@@ -114,12 +114,12 @@ val p = ward_promise_then<int><int>(timer,
 
 ## The trusted surface
 
-Safety by construction means the `.sats` files are the specification. User code cannot introduce `praxi` or `$UNSAFE` operations. The trusted surface is limited to:
+Safety by construction means the `.sats` files are the specification. User code cannot introduce `$UNSAFE` operations. The trusted surface is limited to:
 
 - **`memory.dats`** -- implementations behind the safe interface. Each `$UNSAFE` use is individually justified.
 - **`dom.dats`**, **`promise.dats`**, etc. -- similarly restricted implementation files.
-- **`runtime.h`** / **`runtime.c`** -- the C runtime (bump allocator, memset/memcpy).
-- **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports.
+- **`runtime.h`** / **`runtime.c`** -- the C runtime (free-list allocator, stash/resolver tables).
+- **`ward_bridge.mjs`** -- the JS bridge that implements WASM imports, including the JS-side data stash that holds data for WASM to pull via `ward_bridge_recv`.
 
 The anti-exerciser (`exerciser/anti/`) contains 13 files that must fail to compile, verifying that the type system rejects:
 

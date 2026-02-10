@@ -23,7 +23,7 @@ assume ward_dom_stream(l) = stream_vt(l)
 in
 
 (*
- * $UNSAFE justifications — each use is marked with its pattern tag.
+ * $<M>UNSAFE justifications — each use is marked with its pattern tag.
  *
  * [RT1] castvwtp1{ptr}(buf) in _flush_arr:
  *   Extracts raw pointer from ward_arr(byte) to pass to ward_dom_flush.
@@ -31,7 +31,7 @@ in
  *   import that requires a raw pointer. No ATS2-level alternative exists
  *   because the host API is defined in terms of raw memory addresses.
  *
- * No other $UNSAFE uses. All buffer writes go through ward_arr_write_byte,
+ * No other $<M>UNSAFE uses. All buffer writes go through ward_arr_write_byte,
  * ward_arr_write_i32, ward_arr_write_borrow, and ward_arr_write_safe_text
  * which are bounds-checked in memory.sats and implemented in memory.dats.
  *)
@@ -103,6 +103,7 @@ end
  *   SET_ATTR:       [1:op=2] [4:node_id] [1:name_len]   [name_data]
  *                                         [1:lo] [1:hi]  [value_data]
  *   REMOVE_CHILDREN:[1:op=3] [4:node_id]
+ *   REMOVE_CHILD:   [1:op=5] [4:node_id]
  *)
 
 (* --- Stream ops --- *)
@@ -182,6 +183,16 @@ ward_dom_stream_remove_children{l}(stream, node_id) = let
   val c = _ward_stream_auto_flush{l}{5}(stream, 5)
   val+ @stream_mk(buf, cursor) = stream
   val () = ward_arr_write_byte(buf, c, 3)
+  val () = ward_arr_write_i32(buf, c + 1, node_id)
+  val () = cursor := g0ofg1(c + 5)
+  prval () = fold@(stream)
+in stream end
+
+implement
+ward_dom_stream_remove_child{l}(stream, node_id) = let
+  val c = _ward_stream_auto_flush{l}{5}(stream, 5)
+  val+ @stream_mk(buf, cursor) = stream
+  val () = ward_arr_write_byte(buf, c, 5)
   val () = ward_arr_write_i32(buf, c + 1, node_id)
   val () = cursor := g0ofg1(c + 5)
   prval () = fold@(stream)

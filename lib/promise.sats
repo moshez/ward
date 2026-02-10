@@ -63,3 +63,20 @@ ward_promise_then
   (p: ward_promise_pending(a),
    f: (a) -<lin,cloptr1> ward_promise_pending(b)
   ): ward_promise_pending(b)
+
+(* ============================================================
+   Resolver stash — stores resolver in table, returns integer ID.
+   Used by bridge modules to pass resolvers through JS host.
+   Linear: stash consumes the resolver, unstash produces it.
+   ============================================================ *)
+
+fun ward_promise_stash
+  (r: ward_promise_resolver(int)): int = "mac#ward_resolver_stash"
+
+fun ward_promise_unstash
+  (id: int): ward_promise_resolver(int) = "mac#ward_resolver_unstash"
+
+(* Combined unstash + resolve — safe against bad IDs from JS.
+   If ID is invalid or already consumed, silently no-ops. *)
+fun ward_promise_fire
+  (id: int, value: int): void = "mac#ward_resolver_fire"

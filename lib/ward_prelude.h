@@ -14,6 +14,7 @@
 #define ward_arr_borrow(...) atstype_ptrk
 #define ward_safe_text(...) atstype_ptrk
 #define ward_text_builder(...) atstype_ptrk
+#define ward_text_result(...) atstype_ptrk
 
 /* Promise types */
 #define ward_promise(...) atstype_ptrk
@@ -69,21 +70,13 @@ static inline void ward_dom_flush(void *buf, int len) {
   /* stub — in WASM, this calls the JS bridge */
 }
 
-/* IDB stash stubs (native build parity with runtime.c) */
-static void *_ward_idb_stash_ptr = 0;
-static int _ward_idb_stash_len = 0;
-static inline void ward_idb_stash_set(void *p, int len) {
-  _ward_idb_stash_ptr = p; _ward_idb_stash_len = len;
-}
-static inline void *ward_idb_stash_get_ptr(void) { return _ward_idb_stash_ptr; }
-
-/* Bridge stash stubs (native build parity with runtime.c) */
-static void *_ward_bridge_stash_ptr = 0;
+/* Bridge int stash stubs (native build parity with runtime.c) */
 static int _ward_bridge_stash_int[4] = {0};
-static inline void ward_bridge_stash_set_ptr(void *p) { _ward_bridge_stash_ptr = p; }
-static inline void *ward_bridge_stash_get_ptr(void) { return _ward_bridge_stash_ptr; }
 static inline void ward_bridge_stash_set_int(int slot, int v) { _ward_bridge_stash_int[slot] = v; }
 static inline int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stash_int[slot]; }
+
+/* JS data stash stub (native build — no-op) */
+static inline void ward_js_stash_read(int stash_id, void *dest, int len) { /* stub */ }
 
 /* Measure stash stubs */
 static int _ward_measure[6] = {0};
@@ -91,7 +84,7 @@ static inline void ward_measure_set(int slot, int v) { _ward_measure[slot] = v; 
 static inline int ward_measure_get(int slot) { return _ward_measure[slot]; }
 
 /* Listener table stubs */
-#define WARD_MAX_LISTENERS 64
+#define WARD_MAX_LISTENERS 128
 static void *_ward_listener_table[WARD_MAX_LISTENERS] = {0};
 static inline void ward_listener_set(int id, void *cb) {
   if (id >= 0 && id < WARD_MAX_LISTENERS) _ward_listener_table[id] = cb;
@@ -99,6 +92,25 @@ static inline void ward_listener_set(int id, void *cb) {
 static inline void *ward_listener_get(int id) {
   if (id >= 0 && id < WARD_MAX_LISTENERS) return _ward_listener_table[id];
   return (void*)0;
+}
+
+/* Resolver stash stubs (native build) */
+#define WARD_MAX_RESOLVERS 64
+static void *_ward_resolver_table[WARD_MAX_RESOLVERS] = {0};
+static inline int ward_resolver_stash(void *resolver) {
+    for (int i = 0; i < WARD_MAX_RESOLVERS; i++) {
+        if (!_ward_resolver_table[i]) { _ward_resolver_table[i] = resolver; return i; }
+    }
+    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+}
+static inline void *ward_resolver_unstash(int id) {
+    if (id < 0 || id >= WARD_MAX_RESOLVERS) return (void*)0;
+    void *r = _ward_resolver_table[id]; _ward_resolver_table[id] = 0; return r;
+}
+extern void _ward_resolve_chain(void *p, void *v);
+static inline void ward_resolver_fire(int id, int value) {
+    void *r = ward_resolver_unstash(id);
+    if (r) _ward_resolve_chain(r, (void*)(long)value);
 }
 
 #endif /* WARD_PRELUDE_H */

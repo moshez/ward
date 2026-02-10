@@ -84,15 +84,16 @@ Replaces the ATS2 standard runtime headers that require libc. Provides:
 - **Ward type definitions** -- all ward types erase to `void*`
 - **Closure support** -- `ATSclosurerize_beg/end`, `ATSFCreturn`, `ATSPMVcfunlab`
 - **DOM helpers** -- `ward_set_byte`, `ward_set_i32`, `ward_copy_at`
-- **Slot helpers** -- `ward_slot_get`, `ward_slot_set` (for promise internals)
-- **Global state** -- `ward_dom_global_get/set`, `ward_dom_cursor_get/set`, `ward_idb_result_*`, `ward_measure_set`
+- **Promise support** -- `_ward_cloptr1_wrap` self-freeing closure wrapper, `_ward_resolve_chain` declaration
+- **Stash and table declarations** -- `ward_bridge_stash_set/get_int`, `ward_measure_set/get`, `ward_listener_set/get`, `ward_resolver_stash/unstash/fire`, `ward_js_stash_read`
 
-### `runtime.c` -- Bump allocator and support
+### `runtime.c` -- Free-list allocator and support
 
-- **Bump allocator** -- simple `malloc` that increments a pointer, `free` is a no-op (WASM linear memory)
+- **Free-list allocator** -- segregated-list `malloc` with 4 size classes (32, 128, 512, 4096 bytes) and oversized free list (first-fit). `free` returns blocks to the appropriate list.
 - **memset/memcpy** -- freestanding implementations
-- **DOM global state** -- single `ward_dom_state*` pointer for checkout/redeem
-- **DOM cursor** -- tracks write position in 256KB diff buffer
+- **Bridge int stash** -- 4-slot integer array for stash IDs and metadata
+- **Resolver table** -- 64-slot linear clear-on-take table for async resolvers
+- **Listener table** -- 128-slot table for event listener closures
 
 ### `ward_prelude.h` -- Native build macros
 

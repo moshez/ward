@@ -73,6 +73,11 @@ fun ward_dom_stream_remove_children
   (stream: ward_dom_stream(l), node_id: int)
   : ward_dom_stream(l)
 
+fun ward_dom_stream_remove_child
+  {l:agz}
+  (stream: ward_dom_stream(l), node_id: int)
+  : ward_dom_stream(l)
+
 (* --- Safe text stream variants (no borrow needed) --- *)
 
 fun ward_dom_stream_set_safe_text
