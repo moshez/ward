@@ -113,6 +113,10 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define ATSPMVcastfn(d2c, hit, arg) ((hit)arg)
 #define ATSPMVtyrep(rep) (rep)
 
+#define ATStyclo() struct{ void *cfun; }
+#define ATSfunclo_fun(pmv, targs, tres) ((tres(*)targs)(pmv))
+#define ATSfunclo_clo(pmv, targs, tres) ((tres(*)targs)(((ATStyclo()*)pmv)->cfun))
+
 #define ATSfuncall(fun, funarg) (fun)funarg
 #define ATSextfcall(fun, funarg) (fun)funarg
 #define ATSextmcall(obj, mtd, funarg) (obj->mtd)funarg
@@ -197,8 +201,11 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g0int_eq_int(x, y) ((x) == (y))
 #define atspre_g0int_mul_int(x, y) ((x) * (y))
 
-/* byte2int0: not in freestanding mode since prelude is suppressed */
+/* Prelude functions not in freestanding mode since CATS files are suppressed */
 #define atspre_byte2int0(b) ((int)(b))
+#define atspre_ptr_null() ((void*)0)
+#define atspre_ptr_isnot_null(p) ((p) != 0)
+#define atspre_ptr0_isnot_null atspre_ptr_isnot_null
 
 /* === Closure support (needed for cloref1 lambdas) === */
 
@@ -279,24 +286,26 @@ static inline void ward_copy_at(void *dst, int off, const void *src, int n) {
   memcpy((char*)dst + off, src, n);
 }
 
+/* Resolver stash (implemented in runtime.c) — linear clear-on-take */
+int ward_resolver_stash(void *resolver);
+void *ward_resolver_unstash(int id);
+void ward_resolver_fire(int id, int value);
+
 /* Event bridge (WASM imports from JS host) */
-extern void ward_set_timer(int delay_ms, void *resolver_ptr);
+extern void ward_set_timer(int delay_ms, int resolver_id);
 extern void ward_exit(void);
 
-/* IDB stash (implemented in runtime.c) */
-void ward_idb_stash_set(void *p, int len);
-void *ward_idb_stash_get_ptr(void);
-
 /* IDB JS imports */
-extern void ward_idb_js_put(void *key, int key_len, void *val, int val_len, void *resolver);
-extern void ward_idb_js_get(void *key, int key_len, void *resolver);
-extern void ward_idb_js_delete(void *key, int key_len, void *resolver);
+extern void ward_idb_js_put(void *key, int key_len, void *val, int val_len, int resolver_id);
+extern void ward_idb_js_get(void *key, int key_len, int resolver_id);
+extern void ward_idb_js_delete(void *key, int key_len, int resolver_id);
 
-/* Bridge stash (implemented in runtime.c) — shared by fetch, file, decompress, notify, listener */
-void ward_bridge_stash_set_ptr(void *p);
-void *ward_bridge_stash_get_ptr(void);
+/* Bridge int stash (implemented in runtime.c) — 4 slots for stash IDs and metadata */
 void ward_bridge_stash_set_int(int slot, int v);
 int ward_bridge_stash_get_int(int slot);
+
+/* JS data stash — WASM pulls stashed data via this import */
+extern void ward_js_stash_read(int stash_id, void *dest, int len);
 
 /* Measure stash (implemented in runtime.c) — 6 slots: x, y, w, h, top, left */
 void ward_measure_set(int slot, int v);
@@ -328,26 +337,26 @@ extern void ward_js_remove_event_listener(int listener_id);
 extern void ward_js_prevent_default(void);
 
 /* Fetch JS imports */
-extern void ward_js_fetch(void *url, int url_len, void *resolver);
+extern void ward_js_fetch(void *url, int url_len, int resolver_id);
 
 /* Clipboard JS imports */
-extern void ward_js_clipboard_write_text(void *text, int text_len, void *resolver);
+extern void ward_js_clipboard_write_text(void *text, int text_len, int resolver_id);
 
 /* File JS imports */
-extern void ward_js_file_open(int input_node_id, void *resolver);
+extern void ward_js_file_open(int input_node_id, int resolver_id);
 extern int ward_js_file_read(int handle, int file_offset, int len, void *out);
 extern void ward_js_file_close(int handle);
 
 /* Decompress JS imports */
-extern void ward_js_decompress(void *data, int data_len, int method, void *resolver);
+extern void ward_js_decompress(void *data, int data_len, int method, int resolver_id);
 extern int ward_js_blob_read(int handle, int blob_offset, int len, void *out);
 extern void ward_js_blob_free(int handle);
 
 /* Notification/Push JS imports */
-extern void ward_js_notification_request_permission(void *resolver);
+extern void ward_js_notification_request_permission(int resolver_id);
 extern void ward_js_notification_show(void *title, int title_len);
-extern void ward_js_push_subscribe(void *vapid, int vapid_len, void *resolver);
-extern void ward_js_push_get_subscription(void *resolver);
+extern void ward_js_push_subscribe(void *vapid, int vapid_len, int resolver_id);
+extern void ward_js_push_get_subscription(int resolver_id);
 
 /* HTML parsing JS import */
 extern int ward_js_parse_html(void *html, int html_len);

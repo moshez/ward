@@ -238,13 +238,13 @@ NODE_WASM_OBJS := build/memory_node_dats.o build/dom_node_dats.o build/promise_n
 
 # WASM exports for bridge callbacks
 NODE_WASM_EXPORTS := --export=ward_node_init --export=ward_timer_fire \
-  --export=ward_idb_fire --export=ward_idb_fire_get --export=malloc \
+  --export=ward_idb_fire --export=ward_idb_fire_get \
   --export=ward_on_event --export=ward_measure_set \
   --export=ward_on_fetch_complete --export=ward_on_clipboard_complete \
   --export=ward_on_file_open --export=ward_on_decompress_complete \
   --export=ward_on_permission_result --export=ward_on_push_subscribe \
   --export=ward_on_callback \
-  --export=ward_bridge_stash_set_ptr
+  --export=ward_bridge_stash_set_int
 
 build/node_ward.wasm: $(NODE_WASM_OBJS)
 	$(WASM_LD) $(WASM_LDFLAGS) --allow-undefined \

@@ -16,7 +16,7 @@ local
 in
 
 (*
- * $UNSAFE justifications — each use is marked with its pattern tag.
+ * $<M>UNSAFE justifications — each use is marked with its pattern tag.
  *
  * [U1] ptr0_get/ptr0_set (get, set, read, safe_text_get, text_putc):
  *   Dereferences ptr at computed offset to read/write element of type a.
@@ -157,7 +157,7 @@ ward_int2byte{i}(i) = _proven_int2byte(i)
 
 (*
  * Array write operations — byte-level, for DOM streaming.
- * No $UNSAFE needed: inside the local block, ward_arr(byte, l, n) = ptr l,
+ * No $<M>UNSAFE needed: inside the local block, ward_arr(byte, l, n) = ptr l,
  * ward_arr_borrow(byte, ls, n) = ptr ls, ward_safe_text(n) = ptr.
  * The $extfcall targets (ward_set_byte, ward_set_i32, ward_copy_at) are
  * C helpers in runtime.h / ward_prelude.h that operate on raw pointers.
@@ -178,5 +178,18 @@ ward_arr_write_borrow{ld}{ls}{m}{n}{off}(dst, off_val, src, len) =
 implement
 ward_arr_write_safe_text{l}{m}{n}{off}(dst, off_val, src, len) =
   $extfcall(void, "ward_copy_at", dst, off_val, src, len)
+
+(* JS data stash import — pulls stashed data into WASM-owned buffer.
+   No $UNSAFE needed: inside the local block, ward_arr(byte, l, n) = ptr l,
+   so _ward_malloc_bytes(len) returns [l:agz] ptr l which satisfies the return type.
+   p is ptr at C level, matching the void *dest import. *)
+extern fun _ward_js_stash_read
+  (stash_id: int, dest: ptr, len: int): void = "mac#ward_js_stash_read"
+
+implement
+ward_bridge_recv{n}(stash_id, len) = let
+  val p = _ward_malloc_bytes(len)
+  val () = _ward_js_stash_read(stash_id, p, len)
+in p end
 
 end (* local *)

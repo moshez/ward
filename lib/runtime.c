@@ -117,19 +117,8 @@ void *memcpy(void *dst, const void *src, unsigned int n) {
     return dst;
 }
 
-/* IDB result stash — JS stores malloc'd ptr here, ATS2 recovers via ward_idb_get_result */
-static void *_ward_idb_stash_ptr = 0;
-static int _ward_idb_stash_len = 0;
-void ward_idb_stash_set(void *p, int len) {
-    _ward_idb_stash_ptr = p; _ward_idb_stash_len = len;
-}
-void *ward_idb_stash_get_ptr(void) { return _ward_idb_stash_ptr; }
-
-/* Bridge stash — shared by fetch, file, decompress, notify, listener */
-static void *_ward_bridge_stash_ptr = 0;
+/* Bridge int stash — 4 slots for stash IDs and metadata */
 static int _ward_bridge_stash_int[4] = {0};
-void ward_bridge_stash_set_ptr(void *p) { _ward_bridge_stash_ptr = p; }
-void *ward_bridge_stash_get_ptr(void) { return _ward_bridge_stash_ptr; }
 void ward_bridge_stash_set_int(int slot, int v) { _ward_bridge_stash_int[slot] = v; }
 int ward_bridge_stash_get_int(int slot) { return _ward_bridge_stash_int[slot]; }
 
@@ -147,4 +136,32 @@ void ward_listener_set(int id, void *cb) {
 void *ward_listener_get(int id) {
     if (id >= 0 && id < WARD_MAX_LISTENERS) return _ward_listener_table[id];
     return (void*)0;
+}
+
+/* Resolver stash — linear: each slot consumed exactly once */
+#define WARD_MAX_RESOLVERS 64
+static void *_ward_resolver_table[WARD_MAX_RESOLVERS] = {0};
+
+int ward_resolver_stash(void *resolver) {
+    for (int i = 0; i < WARD_MAX_RESOLVERS; i++) {
+        if (!_ward_resolver_table[i]) {
+            _ward_resolver_table[i] = resolver;
+            return i;
+        }
+    }
+    __builtin_trap(); /* resolver table full — 64 concurrent async ops exceeded */
+}
+
+void *ward_resolver_unstash(int id) {
+    if (id < 0 || id >= WARD_MAX_RESOLVERS) return (void*)0;
+    void *r = _ward_resolver_table[id];
+    _ward_resolver_table[id] = 0; /* clear-on-take: linear consumption */
+    return r; /* NULL if already consumed or never stashed */
+}
+
+/* Combined unstash + resolve — safe against bad IDs from JS.
+   If ID is invalid or already consumed, silently no-ops. */
+void ward_resolver_fire(int id, int value) {
+    void *r = ward_resolver_unstash(id);
+    if (r) _ward_resolve_chain(r, (void*)(long)value);
 }

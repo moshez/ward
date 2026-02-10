@@ -21,7 +21,7 @@ assume ward_promise(a, s) = promise_vt
 assume ward_promise_resolver(a) = ptr
 
 (*
- * $UNSAFE justifications — each use is marked with its pattern tag.
+ * $<M>UNSAFE justifications — each use is marked with its pattern tag.
  *
  * [U1] castvwtp0{ptr}(v) and castvwtp0{a}(vp) (resolved, return, resolve,
  *   extract, then):
@@ -56,8 +56,8 @@ _ward_resolve_chain(p, v) = let
   prval () = fold@(pv)
   val _  = $UNSAFE.castvwtp0{ptr}(pv)  (* [U4] forget — node stays alive *)
 in
-  if $UNSAFE.cast{int}(cb_val) > 0 then
-    if $UNSAFE.cast{int}(chain_val) > 0 then let
+  if ptr_isnot_null(cb_val) then
+    if ptr_isnot_null(chain_val) then let
       val inner_ptr = $extfcall(ptr, "ward_cloref1_invoke", cb_val, v)
       val ipv = $UNSAFE.castvwtp0{promise_vt}(inner_ptr)  (* [U3] *)
       val+ @promise_mk(is2, iv, _, ic) = ipv
@@ -74,7 +74,7 @@ in
       in end
     end
     else ()
-  else if $UNSAFE.cast{int}(chain_val) > 0 then
+  else if ptr_isnot_null(chain_val) then
     _ward_resolve_chain(chain_val, v)  (* tail call *)
   else ()
 end
@@ -83,17 +83,17 @@ in
 
 implement{a}
 ward_promise_create() = let
-  val pv = promise_mk(0, $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0))
+  val pv = promise_mk(0, the_null_ptr, the_null_ptr, the_null_ptr)
   val rp = $UNSAFE.castvwtp1{ptr}(pv)  (* [U3] borrow — resolver aliases promise *)
 in @(pv, rp) end
 
 implement{a}
 ward_promise_resolved(v) =
-  promise_mk(1, $UNSAFE.castvwtp0{ptr}(v), $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0)) (* [U1] *)
+  promise_mk(1, $UNSAFE.castvwtp0{ptr}(v), the_null_ptr, the_null_ptr) (* [U1] *)
 
 implement{a}
 ward_promise_return(v) =
-  promise_mk(1, $UNSAFE.castvwtp0{ptr}(v), $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0)) (* [U1] *)
+  promise_mk(1, $UNSAFE.castvwtp0{ptr}(v), the_null_ptr, the_null_ptr) (* [U1] *)
 
 implement{a}
 ward_promise_resolve(r, v) = let
@@ -114,7 +114,7 @@ in end
 
 implement{a}{b}
 ward_promise_then(p, f) = let
-  val chain = promise_mk(0, $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0), $UNSAFE.cast{ptr}(0))
+  val chain = promise_mk(0, the_null_ptr, the_null_ptr, the_null_ptr)
   val+ @promise_mk(state, value, cb, chain_field) = p
   val is_resolved = state > 0
   val v = value

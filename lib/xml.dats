@@ -1,6 +1,6 @@
 (* xml.dats — Cursor-based XML/HTML reader implementation *)
 (* All cursor reads are bounds-checked via ward_arr_read<byte>.
-   No $UNSAFE in cursor functions — byte2int0 is in runtime.h. *)
+   No $<M>UNSAFE in cursor functions — byte2int0 is in runtime.h. *)
 
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
@@ -8,20 +8,18 @@ staload "./xml.sats"
 staload _ = "./memory.dats"
 
 (*
- * $UNSAFE justifications:
+ * $<M>UNSAFE justification:
  * [U1] castvwtp1{ptr}(html) — borrows borrow as raw ptr for JS import call.
  *   Same pattern as memory.dats [U1]. Single-use, not for data reads.
- * [U-arr] castvwtp0{ward_arr(byte,l,n)}(p) — same as listener.dats [U-arr].
- *   Wraps stashed malloc'd ptr as ward_arr.
  *)
 
 (* JS import *)
 extern fun _ward_js_parse_html
   (html: ptr, len: int): int = "mac#ward_js_parse_html"
 
-(* Bridge stash *)
-extern fun _ward_bridge_stash_get_ptr
-  (): ptr = "mac#ward_bridge_stash_get_ptr"
+(* Bridge int stash — stash_id in slot 1 *)
+extern fun _ward_bridge_stash_get_int
+  (slot: int): int = "mac#ward_bridge_stash_get_int"
 
 (* Bounds-checked byte read. Returns byte as int, or -1 if OOB. *)
 fn _peek{l:agz}{n:pos}
@@ -40,9 +38,8 @@ ward_xml_parse_html{lb}{n}(html, len) =
   _ward_js_parse_html($UNSAFE.castvwtp1{ptr}(html), len) (* [U1] *)
 
 implement
-ward_xml_get_result{n}(len) = let
-  val p = _ward_bridge_stash_get_ptr()
-in $UNSAFE.castvwtp0{[l:agz] ward_arr(byte, l, n)}(p) end (* [U-arr] *)
+ward_xml_get_result{n}(len) =
+  ward_bridge_recv(_ward_bridge_stash_get_int(1), len)
 
 implement
 ward_xml_opcode{l}{n}{p}(buf, pos) =

@@ -8,8 +8,8 @@ describe('HTML parsing', () => {
   it('ward_js_parse_html export is callable', async () => {
     const { ward } = await createWardInstance();
     // ward_js_parse_html is a JS import, not a WASM export.
-    // But ward_bridge_stash_set_ptr should be exported.
-    assert.equal(typeof ward.ward_bridge_stash_set_ptr, 'function');
+    // But ward_bridge_stash_set_int should be exported.
+    assert.equal(typeof ward.ward_bridge_stash_set_int, 'function');
   });
 });
 

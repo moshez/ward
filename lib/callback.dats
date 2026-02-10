@@ -7,7 +7,7 @@ staload "./callback.sats"
 staload _ = "./memory.dats"
 
 (*
- * $UNSAFE justifications:
+ * $<M>UNSAFE justifications:
  * [U-cb] castvwtp0{ptr}(cb) — erase cloref1 to ptr for table storage.
  *   Same pattern as listener.dats [U-cb]. Closure is heap-allocated cloref1,
  *   survives across multiple fires. Recovered in ward_on_callback.
@@ -29,9 +29,9 @@ implement
 ward_callback_fire(id, payload) = let
   val cbp = _ward_listener_get(id)
 in
-  if $UNSAFE.cast{int}(cbp) > 0 then let
-    val _ = $extfcall(ptr, "ward_cloref1_invoke", cbp,
-                      $UNSAFE.cast{ptr}(payload))
+  if ptr_isnot_null(cbp) then let
+    val cb = $UNSAFE.cast{int -<cloref1> int}(cbp) (* [U-cb] recover *)
+    val _ = cb(payload)
   in () end
   else ()
 end

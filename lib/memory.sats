@@ -188,3 +188,11 @@ fun ward_arr_write_safe_text
   {l:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
   (dst: !ward_arr(byte, l, m), off: int off,
    src: ward_safe_text(n), len: int n): void
+
+(* ============================================================
+   Bridge recv — allocate buffer, pull data from JS stash
+   ============================================================ *)
+
+fun ward_bridge_recv
+  {n:pos}
+  (stash_id: int, len: int n): [l:agz] ward_arr(byte, l, n)
