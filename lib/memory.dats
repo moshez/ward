@@ -117,8 +117,8 @@ ward_text_from_bytes{lb}{n}(src, len) = let
     (src: ptr, i: int i, len: int n): bool =
     if i >= len then true
     else let
-      val b = $UNSAFE.cast{int}(
-        $UNSAFE.ptr0_get<byte>(ptr_add<byte>(src, i))) (* [U1]+[U3] *)
+      val b = byte2int0(
+        $UNSAFE.ptr0_get<byte>(ptr_add<byte>(src, i))) (* [U1] *)
     in
       if (b >= 97 andalso b <= 122)       (* a-z *)
          orelse (b >= 65 andalso b <= 90)  (* A-Z *)

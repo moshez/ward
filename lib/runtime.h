@@ -197,6 +197,9 @@ typedef struct { char _[_ATSTYPE_VAR_SIZE_]; } atstype_var[0];
 #define atspre_g0int_eq_int(x, y) ((x) == (y))
 #define atspre_g0int_mul_int(x, y) ((x) * (y))
 
+/* byte2int0: not in freestanding mode since prelude is suppressed */
+#define atspre_byte2int0(b) ((int)(b))
+
 /* === Closure support (needed for cloref1 lambdas) === */
 
 #define ATS_MALLOC(sz) malloc(sz)

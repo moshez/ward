@@ -1,6 +1,6 @@
 (* xml.dats — Cursor-based XML/HTML reader implementation *)
 (* All cursor reads are bounds-checked via ward_arr_read<byte>.
-   No raw ptr access for data reads — only [U3] byte-to-int cast. *)
+   No $UNSAFE in cursor functions — byte2int0 is in runtime.h. *)
 
 #include "share/atspre_staload.hats"
 staload "./memory.sats"
@@ -9,8 +9,6 @@ staload _ = "./memory.dats"
 
 (*
  * $UNSAFE justifications:
- * [U3] cast{int}(ward_arr_read<byte>(...)) — converts byte to int for arithmetic.
- *   Same pattern as memory.dats [U3]. ward_arr_read is the safe bounded API.
  * [U1] castvwtp1{ptr}(html) — borrows borrow as raw ptr for JS import call.
  *   Same pattern as memory.dats [U1]. Single-use, not for data reads.
  * [U-arr] castvwtp0{ward_arr(byte,l,n)}(p) — same as listener.dats [U-arr].
@@ -32,7 +30,7 @@ fn _peek{l:agz}{n:pos}
 in
   if off1 >= 0 then
     if off1 < len then
-      $UNSAFE.cast{int}(ward_arr_read<byte>(buf, off1)) (* [U3] *)
+      byte2int0(ward_arr_read<byte>(buf, off1))
     else ~1
   else ~1
 end
@@ -48,7 +46,7 @@ in $UNSAFE.castvwtp0{[l:agz] ward_arr(byte, l, n)}(p) end (* [U-arr] *)
 
 implement
 ward_xml_opcode{l}{n}{p}(buf, pos) =
-  $UNSAFE.cast{int}(ward_arr_read<byte>(buf, pos)) (* [U3] *)
+  byte2int0(ward_arr_read<byte>(buf, pos))
 
 implement
 ward_xml_element_open{l}{n}{p}(buf, pos, len) = let
