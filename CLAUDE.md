@@ -153,11 +153,11 @@ Characters are verified by passing `char2int1('c')` which preserves the static i
 - `dom_exerciser.dats` -- WASM DOM exerciser (pure safe ATS2, no $UNSAFE)
 - `node_exerciser.mjs` -- Node.js wrapper: loads jsdom, runs ward via bridge
 - `wasm_stubs/` -- empty stubs for libats CATS files (not needed in freestanding mode)
-- `anti/` -- anti-exerciser: code that MUST fail to compile (13 files):
+- `anti/` -- anti-exerciser: code that MUST fail to compile (14 files):
   buffer_overflow, double_free, leak, out_of_bounds, thaw_with_borrows,
   use_after_free, write_while_frozen, unsafe_char,
-  double_resolve, extract_pending, forget_resolver, use_after_then,
-  use_stream_after_end
+  double_resolve, extract_pending, extract_chained, forget_resolver,
+  use_after_then, use_stream_after_end
 
 ### Tests (`tests/`)
 - `helpers.mjs` -- shared test utilities (creates ward instance with jsdom)
@@ -209,7 +209,7 @@ val tail = $UNSAFE.cast{ptr(l+m)}(ptr_add<a>(arr, m))
 
 The following patterns are **never acceptable** as `$UNSAFE` justifications. If you find yourself reaching for one, it means the design needs to change -- use a proper ATS2 data structure instead.
 
-**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected.
+**Justification requirements:** Every expanded `$UNSAFE` justification in `.dats` files must document what alternatives were researched and why they don't work. "I looked and there's no other way" is not sufficient -- name the specific alternatives considered (e.g. `castfn`, view-based approach, prelude function, `datavtype` field) and explain why each was rejected. Additionally, every justification must explain what mitigations prevent **users** from causing bad behavior through the public API. Since users only interact with the `.sats` interface (abstract linear types), the justification must show that no sequence of public API calls can trigger unsoundness -- e.g. use-after-free, double-free, or memory corruption -- regardless of how the `$UNSAFE` is used internally.
 
 1. **"We need a C global to share state"** -- ATS2 has `datavtype`, linear closures, and explicit state threading. A C global is a hole in the type system that bypasses linearity. Store state in ATS2 data structures and thread it through function parameters. For async boundaries, use `ward_promise_then` with linear closures (`cloptr1`) to capture and thread linear state through promise callbacks.
 

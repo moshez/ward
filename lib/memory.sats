@@ -200,3 +200,48 @@ fun ward_arr_write_safe_text
 fun ward_bridge_recv
   {n:pos}
   (stash_id: int, len: int n): [l:agz] ward_arr(byte, l, n)
+
+(* ============================================================
+   Content text — wider character set for attribute values
+   ============================================================ *)
+
+(* Printable ASCII minus XML-special chars: exclude " & < > *)
+stadef SAFE_CONTENT_CHAR(c:int) =
+  (c >= 32 && c <= 126)
+  && c != 34                      (* " *)
+  && c != 38                      (* & *)
+  && c != 60                      (* < *)
+  && c != 62                      (* > *)
+
+abstype ward_safe_content_text(n:int) = ptr
+absvtype ward_content_text_builder(n:int, filled:int)
+
+fun ward_content_text_build
+  {n:pos}
+  (n: int n)
+  : ward_content_text_builder(n, 0)
+
+fun ward_content_text_putc
+  {c:int | SAFE_CONTENT_CHAR(c)} {n:pos} {i:nat | i < n}
+  (b: ward_content_text_builder(n, i), i: int i, c: int c)
+  : ward_content_text_builder(n, i+1)
+
+fun ward_content_text_done
+  {n:pos}
+  (b: ward_content_text_builder(n, n))
+  : ward_safe_content_text(n)
+
+fun ward_safe_content_text_get
+  {n,i:nat | i < n}
+  (t: ward_safe_content_text(n), i: int i)
+  : byte
+
+(* Zero-cost coercion: safe_text -> content_text (SAFE_CHAR subset of SAFE_CONTENT_CHAR) *)
+castfn ward_text_to_content{n:nat}
+  (t: ward_safe_text(n)): ward_safe_content_text(n)
+
+(* Write content text into byte array buffer *)
+fun ward_arr_write_content_text
+  {l:agz}{m:nat}{n:nat}{off:nat | off + n <= m}
+  (dst: !ward_arr(byte, l, m), off: int off,
+   src: ward_safe_content_text(n), len: int n): void

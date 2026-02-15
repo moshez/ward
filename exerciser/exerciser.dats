@@ -291,6 +291,44 @@ implement main0 () = let
   val () = ward_promise_discard<int><Pending> (p)
   val () = println! ("resolved and discarded")
 
+  (* === Promises: then chain -- resolve then discard === *)
+  val () = println! ("\n=== Promises: then chain -- resolve then discard ===")
+  val @(p, r) = ward_promise_create<int> ()
+  val p2 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int> (x + 1))
+  val () = ward_promise_resolve<int> (r, 10)
+  val () = ward_promise_discard<int><Chained> (p2)
+  val () = println! ("then chain: resolved and discarded -- no crash")
+
+  (* === Promises: multi-level then chain === *)
+  val () = println! ("\n=== Promises: multi-level then chain ===")
+  val @(p, r) = ward_promise_create<int> ()
+  val p2 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int> (x * 2))
+  val p3 = ward_promise_then<int><int> (p2, llam (x) => ward_promise_return<int> (x + 5))
+  val () = ward_promise_resolve<int> (r, 7)
+  val () = ward_promise_discard<int><Chained> (p3)
+  val () = println! ("multi-level chain: resolved and discarded -- no crash")
+
+  (* === Promises: then on pre-resolved promise === *)
+  val () = println! ("\n=== Promises: then on pre-resolved ===")
+  val p = ward_promise_resolved<int> (50)
+  val p2 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int> (x - 8))
+  val () = ward_promise_discard<int><Chained> (p2)
+  val () = println! ("then on pre-resolved: discarded -- no crash")
+
+  (* === Promises: discard chained promise before resolve (abandon path) === *)
+  val () = println! ("\n=== Promises: discard chained before resolve ===")
+  val @(p, r) = ward_promise_create<int> ()
+  val p2 = ward_promise_then<int><int> (p, llam (x) => ward_promise_return<int> (x + 1))
+  val () = ward_promise_discard<int><Chained> (p2)
+  val () = ward_promise_resolve<int> (r, 42)
+  val () = println! ("discarded chain node before resolve -- no crash")
+
+  (* === Promises: discard resolved promise === *)
+  val () = println! ("\n=== Promises: discard resolved promise ===")
+  val p = ward_promise_resolved<int> (100)
+  val () = ward_promise_discard<int><Resolved> (p)
+  val () = println! ("discarded resolved promise -- freed normally")
+
   val () = println! ("\n=== All operations exercised successfully ===")
 
 in end

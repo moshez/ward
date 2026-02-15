@@ -12,6 +12,8 @@ local
   assume ward_arr_borrow(a, l, n) = ptr l
   assume ward_safe_text(n) = ptr
   assume ward_text_builder(n, i) = ptr
+  assume ward_safe_content_text(n) = ptr
+  assume ward_content_text_builder(n, i) = ptr
 
 in
 
@@ -196,5 +198,26 @@ ward_arr_write_u16le{l}{n}{i}{v}(arr, i, v) = let
   val () = $extfcall(void, "ward_set_byte", arr, i, v0)
   val () = $extfcall(void, "ward_set_byte", arr, i + 1, v0 / 256)
 in () end
+
+(* Content text — same [U1] pattern as ward_text_* above *)
+
+implement
+ward_content_text_build{n}(n) = _ward_malloc_bytes(n)
+
+implement
+ward_content_text_putc{c}{n}{i}(b, i, c) = let
+  val () = $UNSAFE.ptr0_set<byte>(ptr_add<byte>(b, i), _proven_int2byte(c)) (* [U1] *)
+in b end
+
+implement
+ward_content_text_done{n}(b) = b
+
+implement
+ward_safe_content_text_get{n,i}(t, i) =
+  $UNSAFE.ptr0_get<byte>(ptr_add<byte>(t, i)) (* [U1] *)
+
+implement
+ward_arr_write_content_text{l}{m}{n}{off}(dst, off_val, src, len) =
+  $extfcall(void, "ward_copy_at", dst, off_val, src, len)
 
 end (* local *)
