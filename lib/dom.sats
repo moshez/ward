@@ -96,9 +96,9 @@ fun ward_dom_stream_set_attr_safe
 (* --- Image display (direct bridge call, not diff buffer) --- *)
 
 fun ward_dom_stream_set_image_src
-  {l:agz}{ld:agz}{n:pos}{m:pos}
+  {l:agz}{ld:agz}{n:pos}{lm:agz}{m:pos}
   (stream: ward_dom_stream(l),
    node_id: int,
    data: !ward_arr_borrow(byte, ld, n), data_len: int(n),
-   mime_type: ward_safe_content_text(m), mime_len: int(m))
+   mime_type: !ward_safe_content_text(lm, m), mime_len: int(m))
   : ward_dom_stream(l)

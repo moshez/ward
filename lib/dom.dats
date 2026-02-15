@@ -234,17 +234,20 @@ ward_dom_stream_set_attr_safe{l}{nl}{vl}
 in stream end
 
 (*
- * [RT2] castvwtp1{ptr}(data) in ward_dom_stream_set_image_src:
- *   Extracts raw pointer from borrow to pass to ward_js_set_image_src bridge import.
- *   Same WASM/JS boundary crossing as [RT1]. Alternative considered: no ATS2-level
- *   alternative exists — the host API requires a raw memory address.
- *   User safety: borrow is !T (not consumed), MIME type uses ward_safe_content_text
- *   (compile-time character checked), data length is dependent-typed.
- *   No sequence of public API calls can trigger unsoundness.
+ * [RT2] castvwtp1{ptr}(data), castvwtp1{ptr}(mime_type) in
+ *   ward_dom_stream_set_image_src:
+ *   Extracts raw pointers from borrow and content_text to pass to
+ *   ward_js_set_image_src bridge import. Same WASM/JS boundary crossing
+ *   as [RT1]. Alternative considered: no ATS2-level alternative exists
+ *   — the host API requires raw memory addresses.
+ *   User safety: both are !T (not consumed), MIME type uses
+ *   ward_safe_content_text (compile-time character checked), data length
+ *   is dependent-typed. No sequence of public API calls can trigger
+ *   unsoundness.
  *)
 
 implement
-ward_dom_stream_set_image_src{l}{ld}{n}{m}
+ward_dom_stream_set_image_src{l}{ld}{n}{lm}{m}
   (stream, node_id, data, data_len, mime_type, mime_len) = let
   (* Flush current buffer to preserve operation ordering *)
   val+ @stream_mk(buf, cursor) = stream
@@ -254,8 +257,9 @@ ward_dom_stream_set_image_src{l}{ld}{n}{m}
   prval () = fold@(stream)
   (* Direct bridge call — image data can exceed diff buffer capacity *)
   val dp = $UNSAFE.castvwtp1{ptr}(data) (* [RT2] *)
+  val mp = $UNSAFE.castvwtp1{ptr}(mime_type) (* [RT2] *)
 in
-  _ward_js_set_image_src(node_id, dp, data_len, mime_type, mime_len);
+  _ward_js_set_image_src(node_id, dp, data_len, mp, mime_len);
   stream
 end
 

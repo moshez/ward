@@ -12,9 +12,6 @@ local
   assume ward_arr_borrow(a, l, n) = ptr l
   assume ward_safe_text(n) = ptr
   assume ward_text_builder(n, i) = ptr
-  assume ward_safe_content_text(n) = ptr
-  assume ward_content_text_builder(n, i) = ptr
-
 in
 
 (*
@@ -199,25 +196,54 @@ ward_arr_write_u16le{l}{n}{i}{v}(arr, i, v) = let
   val () = $extfcall(void, "ward_set_byte", arr, i + 1, v0 / 256)
 in () end
 
-(* Content text — same [U1] pattern as ward_text_* above *)
+end (* local -- ward_arr, safe_text *)
+
+(* Content text — separate local block so ward_arr stays abstract.
+   The content text types are assumed as ward_arr(byte), delegating all
+   memory operations to the already-audited ward_arr functions.
+   No $UNSAFE in this block. *)
+
+local
+
+  assume ward_safe_content_text(l, n) = ward_arr(byte, l, n)
+  assume ward_content_text_builder(l, n, i) = ward_arr(byte, l, n)
+
+in
 
 implement
-ward_content_text_build{n}(n) = _ward_malloc_bytes(n)
+ward_content_text_build{n}(n) = ward_arr_alloc<byte>(n)
 
 implement
-ward_content_text_putc{c}{n}{i}(b, i, c) = let
-  val () = $UNSAFE.ptr0_set<byte>(ptr_add<byte>(b, i), _proven_int2byte(c)) (* [U1] *)
+ward_content_text_putc{c}{l}{n}{i}(b, i, c) = let
+  val () = ward_arr_set<byte>(b, i, ward_int2byte(c))
 in b end
 
 implement
-ward_content_text_done{n}(b) = b
+ward_content_text_done{l}{n}(b) = b
 
 implement
-ward_safe_content_text_get{n,i}(t, i) =
-  $UNSAFE.ptr0_get<byte>(ptr_add<byte>(t, i)) (* [U1] *)
+ward_safe_content_text_get{l}{n,i}(t, i) =
+  ward_arr_get<byte>(t, i)
 
 implement
-ward_arr_write_content_text{l}{m}{n}{off}(dst, off_val, src, len) =
-  $extfcall(void, "ward_copy_at", dst, off_val, src, len)
+ward_safe_content_text_free{l}{n}(t) =
+  ward_arr_free<byte>(t)
 
-end (* local *)
+implement
+ward_text_to_content{n}(t, len) = let
+  val arr = ward_arr_alloc<byte>(len)
+  val () = ward_arr_write_safe_text(arr, 0, t, len)
+in arr end
+
+implement
+ward_arr_write_content_text{ld}{ls}{m}{n}{off}(dst, off_val, src, len) = let
+  fun loop{i:nat | i <= n}
+    (dst: !ward_arr(byte, ld, m), src: !ward_safe_content_text(ls, n),
+     off_val: int off, i: int i, len: int n): void =
+    if i < len then let
+      val b = ward_safe_content_text_get(src, i)
+      val () = ward_arr_set<byte>(dst, off_val + i, b)
+    in loop(dst, src, off_val, i + 1, len) end
+in loop(dst, src, off_val, 0, len) end
+
+end (* local -- content text *)
