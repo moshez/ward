@@ -26,7 +26,7 @@ Every shortcut you take is a vulnerability you ship. Every "it's fine, I checked
 
 ## Type Safety Requirements
 
-**All new functionality must be proven correct using ATS2's type system.**
+**All functionality must be proven correct using ATS2's type system.**
 
 The goal is **functional correctness**, not just safety. Prove that code *does the right thing*, not merely that it *doesn't crash*.
 
