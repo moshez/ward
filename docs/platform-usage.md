@@ -13,9 +13,158 @@ ln -s ../../vendor/ward/docs/platform-usage.md .claude/rules/platform-usage.md
 
 Adjust the relative path if your vendor directory is located elsewhere.
 
+## Getting Started
+
+A ward application is a WASM module served as a static site. The browser-side scaffolding consists of a small set of fixed files. Most of these are not application-specific -- they are ward infrastructure that happens to live in your repo.
+
+### Project structure
+
+```
+myapp/
+  index.html              # Loader page (see template below)
+  loader.css              # Loading screen styles (see template below)
+  manifest.json           # PWA manifest
+  service-worker.js       # Offline caching
+  icon-192.png            # App icon (192x192)
+  icon-512.png            # App icon (512x512)
+  vendor/ward/            # Ward vendored dependency
+  src/                    # ATS2 application source
+  e2e/                    # Playwright e2e tests
+  playwright.config.js    # Playwright configuration
+  Makefile                # Build system
+  package.json            # Node.js dependencies (Playwright, serve)
+```
+
+### index.html
+
+The loader page is mostly fixed infrastructure. **Only three things are application-specific**: the title, the version indicator text, and the icon. Everything else must remain exactly as shown.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyApp</title>                              <!-- CUSTOMIZE: app title -->
+  <meta name="theme-color" content="#fafaf8">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="loader.css">
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+  <div id="app">
+    <div class="ward-loading">
+      <div class="spinner"></div>
+      <div class="app-name">MyApp</div>             <!-- CUSTOMIZE: app name -->
+    </div>
+  </div>
+  <script type="module">
+    import { loadWard } from './vendor/ward/lib/ward_bridge.mjs';
+    const root = document.getElementById('app');
+    const resp = await fetch('myapp.wasm');           // CUSTOMIZE: wasm filename
+    const bytes = await resp.arrayBuffer();
+    await loadWard(bytes, root, {
+      extraImports: {
+        // Application-specific bridge imports go here (if any)
+      }
+    });
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+  <div id="build-version" style="position:fixed;bottom:2px;right:4px;font-size:10px;color:#ccc;pointer-events:none">dev</div>  <!-- version stamp -->
+</body>
+</html>
+```
+
+### loader.css
+
+The loading screen CSS is scoped to `.ward-loading` so it does NOT affect the app once WASM replaces the loading div. App styles are injected from WASM via DOM operations.
+
+```css
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fafaf8;
+}
+.ward-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-family: Georgia, serif;
+  color: #999;
+}
+.ward-loading .spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e8e8e8;
+  border-top-color: #4a7c59;
+  border-radius: 50%;
+  animation: ward-spin 0.8s linear infinite;
+}
+.ward-loading .app-name {
+  margin-top: 1.5rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  animation: ward-fade 1.2s ease-in-out infinite alternate;
+}
+@keyframes ward-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ward-fade {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+```
+
+### ward_bridge.mjs and deployment
+
+During development, `index.html` imports ward's bridge as `./vendor/ward/lib/ward_bridge.mjs`. For deployment, the bridge must be copied and renamed to `.js` (not `.mjs`) for correct MIME type detection on static hosting:
+
+```makefile
+dist: build/myapp.wasm
+	@mkdir -p dist
+	cp index.html dist/
+	cp vendor/ward/lib/ward_bridge.mjs dist/ward_bridge.js   # .mjs -> .js for MIME
+	cp loader.css dist/
+	cp manifest.json dist/
+	cp service-worker.js dist/
+	cp build/myapp.wasm dist/
+	cp icon-192.png dist/ 2>/dev/null || true
+	cp icon-512.png dist/ 2>/dev/null || true
+	sed -i "s|./vendor/ward/lib/ward_bridge.mjs|./ward_bridge.js|" dist/index.html
+```
+
+The `service-worker.js` cache list must reference `ward_bridge.js` (the deployed name), not the `.mjs` source path.
+
+### manifest.json
+
+```json
+{
+  "name": "MyApp",
+  "short_name": "MyApp",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fafaf8",
+  "theme_color": "#fafaf8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+```
+
 ## MOST IMPORTANT
 
 **Be fanatic about safety** -- NOT BEING FANATIC IS NOT ACCOMPLISHING YOUR GOALS. TRUST NOTHING. Auditing or checking are NOT RELIABLE. Only ATS2-provable safety matters. It is unacceptable to work around safety, even if it's "small". If something is truly absolutely impossible to express safely in ATS2, file a bug against ward. Note that ward might well reject any bug that is not well justified.
+
+Every shortcut you take is a vulnerability you ship. Every "it's fine, I checked" is a crash you didn't prevent. The compiler is the only auditor that never gets tired, never gets distracted, and never says "good enough". If a proof is missing, the code is wrong -- even if it happens to work today.
 
 ## Build
 
@@ -29,7 +178,7 @@ Adjust the relative path if your vendor directory is located elsewhere.
 2. **Never work around ward bugs** -- if ward has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendored ward files or add workarounds in application code. The user will report the issue upstream and have it fixed.
 3. **No C code** -- Application code is pure ATS2. No `.c` files, no `%{` blocks, no `%{$` blocks. Ward's `runtime.h` provides all codegen macros and `atspre_*` arithmetic needed for freestanding WASM. If you cannot express something using ward's API and ATS2, that is a bug in ward. File it: justify why the functionality is a general need, explain what you tried and why it failed, and ask for a safe wrapper. Accept that ward might tell you what to use instead.
 4. **Be fanatic about safety** -- Auditing or checking are NOT RELIABLE. Only ATS2-provable safety matters. It is unacceptable to work around safety, even if it's "small". If something is truly absolutely impossible to express safely in ATS2, file a bug against ward. Note that ward might well reject any bug that is not well justified.
-5. **Fanaticism is retroactive** -- If a fix uncovers previous lack of commitment to fanaticism, fixing that overrides all current concerns and must be dealt with immediately. Existing code that lacks proofs, uses magic numbers, or has dead code is not "consistent with existing patterns" -- it is a deficiency that must be corrected when discovered.
+5. **Fanaticism is retroactive** -- If a fix uncovers previous lack of commitment to fanaticism, fixing that overrides all current concerns and must be dealt with immediately. Existing code that lacks proofs, uses magic numbers, or has dead code is not "consistent with existing patterns" -- it is a deficiency that must be corrected when discovered. "But it was already like that" is never an excuse. The debt stops accruing NOW.
 
 ## Type Safety Requirements
 
@@ -117,7 +266,6 @@ Plain `int` is `g0int` (untracked). `int c` from `[c:nat] int c` is `g1int` (dep
 
 `op` is a reserved keyword in ATS2. Don't use it as any identifier -- not in dynamic variables, static variables, or dataprop indices. Use `opc`, `opcode`, etc.
 
-
 ## Writing Dataprops
 
 Dataprops are compile-time proofs that are completely erased at runtime. Use them to make invalid states unrepresentable.
@@ -138,38 +286,6 @@ fn emit_diff {opc:int}
 ```
 
 This is stronger than `#define` constants -- even if you use the right numeric value, you must also produce the matching proof.
-
-### Sized buffer pattern: capacity as a type property
-
-Don't hardcode buffer sizes in consumer modules. Instead, define a general-purpose pointer type that carries remaining capacity as a phantom type index. The concrete size appears ONLY at the buffer's definition site; downstream modules reference the capacity through the type, never through a literal.
-
-```ats
-(* Buffer pointer that knows its remaining capacity -- erased to ptr *)
-abstype sized_buf(cap: int) = ptr
-
-(* Concrete size appears ONLY here, at the definition site *)
-stadef BUF_CAP = 4096
-
-(* Accessor returns a sized_buf -- callers get capacity from the type *)
-fun get_buf(): sized_buf(BUF_CAP) = "mac#get_buffer_ptr"
-
-(* Writing checks len <= remaining capacity *)
-fun sbuf_write {cap,l:nat | l <= cap}
-  (dst: sized_buf(cap), src: ptr, len: int l): void = "mac#sbuf_write"
-
-(* Advancing reduces remaining capacity *)
-fun sbuf_advance {cap,n:nat | n <= cap}
-  (buf: sized_buf(cap), n: int n): sized_buf(cap - n) = "mac#ptr_add_int"
-```
-
-The key insight: if the buffer size changes, only the definition site needs updating. All consumer module constraints and proofs automatically adjust because they reference the `stadef`, not a literal.
-
-**Note**: ATS2 `#define` is dynamic-level only. For type-level constraints (`{tl:nat | tl <= ...}`), use `stadef` instead:
-
-```ats
-#define BUFFER_SIZE 4096   (* for runtime C code *)
-stadef BUF_CAP = 4096      (* for type-level constraints *)
-```
 
 ### Never use praxi in application code
 
@@ -205,6 +321,80 @@ The `nl <= BUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars) bu
 5. **Test failures require dataprop analysis**: Every test failure MUST result in comprehensive analysis of all potential dataprops that could have prevented the failure, followed by implementation of those dataprops. The analysis should identify: (a) what runtime invariant was violated, (b) whether a dataprop/absprop could encode that invariant at compile time, (c) what proof obligations would prevent the same class of failure. Even if the fix is a one-line change, the dataprop analysis and implementation are mandatory.
 
 6. **Errors must be impossible or indicate bad input**: Every error condition must either be (a) made impossible by dependent types / dataprops (compile-time elimination), or (b) the result of invalid external input (corrupt data, malformed input), in which case the user must see a clear visual indication of what was wrong. Console-only logging is never sufficient for user-facing errors.
+
+7. **Comprehensive e2e tests are mandatory**: Every application MUST have comprehensive end-to-end tests using Playwright (see the E2E Testing section below). These tests are the final verification that the proven-correct code actually works in the browser. But e2e tests are *verification*, not *the fix* -- see the E2E Testing section for the correct response to test failures.
+
+## E2E Testing
+
+### Playwright is required
+
+Every ward application MUST have comprehensive end-to-end tests using Playwright. These tests exercise the full stack: WASM module loading, bridge communication, DOM rendering, user interaction, and async operations.
+
+### Test configuration
+
+Use multiple viewport sizes to catch layout and rendering issues across device classes:
+
+```js
+// playwright.config.js
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 60000,
+  expect: { timeout: 15000 },
+  use: {
+    baseURL: 'http://localhost:3737',
+    screenshot: 'on',
+    trace: 'on',
+    headless: true,
+  },
+  webServer: {
+    command: 'npx serve . -l 3737 --no-clipboard',
+    port: 3737,
+    reuseExistingServer: !process.env.CI,
+  },
+  projects: [
+    { name: 'desktop', use: { browserName: 'chromium', viewport: { width: 1024, height: 768 } } },
+    { name: 'mobile-portrait', use: { browserName: 'chromium', viewport: { width: 375, height: 667 } } },
+    { name: 'mobile-landscape', use: { browserName: 'chromium', viewport: { width: 667, height: 375 } } },
+    { name: 'tablet', use: { browserName: 'chromium', viewport: { width: 768, height: 1024 } } },
+    { name: 'wide', use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } } },
+  ],
+});
+```
+
+### Responding to e2e test failures
+
+When an e2e test fails, the response protocol is strict:
+
+1. **All crashes are ward bugs.** If the WASM module crashes (page crash, `RuntimeError`, `unreachable` executed), that is a bug in ward. STOP and file a bug report against ward. Do not attempt to fix the crash in application code -- ward's safety guarantees are supposed to make crashes impossible.
+
+2. **Non-crash failures require dataprop analysis FIRST.** Before writing any fix, determine: (a) what runtime invariant was violated, (b) could a dataprop or absprop have prevented this at compile time, (c) what proof obligations would make this class of failure impossible. Implement the dataprops FIRST, then fix the behavior.
+
+3. **Never fix the symptom without the proof.** A test failure that gets fixed with a one-line code change but no new dataprop is an incomplete fix. The proof prevents regression; the code change merely addresses today's instance.
+
+### What to test
+
+E2e tests must cover:
+
+- **App lifecycle**: WASM loads, initializes, renders initial UI
+- **User flows**: Complete user journeys (import data, interact, verify results)
+- **State persistence**: Data survives page reload (IndexedDB roundtrip)
+- **Navigation**: All navigation paths (forward, back, cross-boundary transitions)
+- **Input methods**: Click zones, buttons, keyboard shortcuts
+- **Error display**: Invalid input shows user-visible error (not just console)
+- **Screenshots at every key step**: For visual regression tracking
+
+### Package dependencies
+
+```json
+{
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "serve": "^14.2.0"
+  }
+}
+```
 
 ## Proof Architecture
 
