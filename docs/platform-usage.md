@@ -2,17 +2,6 @@
 
 Guidelines for projects that use ward as a vendored dependency. These rules ensure that application code upholds the same safety guarantees that ward provides.
 
-## Setup
-
-Symlink this file into your project's Claude Code rules so it is always active:
-
-```bash
-mkdir -p .claude/rules
-ln -s ../../vendor/ward/docs/platform-usage.md .claude/rules/platform-usage.md
-```
-
-Adjust the relative path if your vendor directory is located elsewhere.
-
 If you are setting up a new ward application, follow `vendor/ward/docs/getting-started.md` for project scaffolding (index.html, loader.css, bridge, service worker, manifest, Makefile, Playwright).
 
 ## MOST IMPORTANT
