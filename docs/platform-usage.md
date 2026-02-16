@@ -27,13 +27,13 @@ Adjust the relative path if your vendor directory is located elsewhere.
 
 1. **Dependent types enforce correctness** -- if it compiles, the behavior is correct.
 2. **Never work around ward bugs** -- if ward has a bug, STOP and give the user a bug report instead of working around it. Do not patch vendored ward files or add workarounds in application code. The user will report the issue upstream and have it fixed.
-3. **Minimize C code** -- All application code should be in ATS2. Ward's `runtime.h` provides codegen macros and `atspre_*` arithmetic. If an algorithm can be expressed with ward_arr_set/get, div/mod, and existing extern funs, it belongs in ATS2. Any new C code requires justification: (a) external research showing this operation is conventionally done in C, (b) what ATS2-only solutions were tried and why they don't work, (c) trade-offs, and (d) why the C implementation is safe.
+3. **No C code** -- Application code is pure ATS2. No `.c` files, no `%{` blocks, no `%{$` blocks. Ward's `runtime.h` provides all codegen macros and `atspre_*` arithmetic needed for freestanding WASM. If you cannot express something using ward's API and ATS2, that is a bug in ward. File it: justify why the functionality is a general need, explain what you tried and why it failed, and ask for a safe wrapper. Accept that ward might tell you what to use instead.
 4. **Be fanatic about safety** -- Auditing or checking are NOT RELIABLE. Only ATS2-provable safety matters. It is unacceptable to work around safety, even if it's "small". If something is truly absolutely impossible to express safely in ATS2, file a bug against ward. Note that ward might well reject any bug that is not well justified.
 5. **Fanaticism is retroactive** -- If a fix uncovers previous lack of commitment to fanaticism, fixing that overrides all current concerns and must be dealt with immediately. Existing code that lacks proofs, uses magic numbers, or has dead code is not "consistent with existing patterns" -- it is a deficiency that must be corrected when discovered.
 
 ## Type Safety Requirements
 
-**All new functionality must be proven correct using ATS2's type system.** Avoid writing plain C in `%{` blocks when dataprops can enforce invariants at compile time.
+**All new functionality must be proven correct using ATS2's type system.**
 
 The goal is **functional correctness**, not just safety. Prove that code *does the right thing*, not merely that it *doesn't crash*.
 
@@ -65,7 +65,7 @@ Functional correctness proofs often imply safety, but safety alone is insufficie
 - State machine proofs ensure operations happen *in the right order*, not just *without crashing*
 - Linear resource tracking proves DOM nodes are *correctly parented*, not just *not leaked*
 
-If you think C code is needed, you are almost certainly wrong -- rethink the design until it can be expressed in ATS2 with enforced proofs.
+If you think C code is needed, that is a bug in ward -- file it (see rule 3).
 
 ### UI and Application Logic Proofs
 
@@ -85,33 +85,7 @@ dataprop APP_STATE_VALID(state: int) =
 absprop SERIALIZE_ROUNDTRIP(serialize_len: int, restore_ok: int)
 ```
 
-## Avoiding C Blocks
-
-Application code must not use C `%{` blocks -- they bypass all ATS2 type checking. If you need a C primitive that ward does not already provide, declare it properly:
-
-### Step 1: Declare C primitives as extern
-
-Put irreducible C operations (byte access, bitwise ops, pointer arithmetic) in a header as macros, then declare them in `.sats`:
-
-```ats
-(* .sats -- declare the primitive *)
-fun buf_get_u8(p: ptr, off: int): int = "mac#"
-fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
-```
-
-```c
-/* header -- implement the primitive */
-#define buf_get_u8(p, off) (((unsigned char*)(p))[(off)])
-#define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
-```
-
-### Step 2: Keep global state in C files, not inline
-
-Global state belongs in dedicated C files with getter/setter functions declared as `= "mac#"` in `.sats`. Never use `static` variables in `%{` blocks.
-
-### Step 3: Write ATS implementations using the primitives
-
-Use `fn` for non-recursive module-local helpers, `implement` for `.sats` functions. Both support `{...}` template parameters.
+## ATS2 Patterns
 
 ### Freestanding arithmetic
 
@@ -143,18 +117,6 @@ Plain `int` is `g0int` (untracked). `int c` from `[c:nat] int c` is `g1int` (dep
 
 `op` is a reserved keyword in ATS2. Don't use it as any identifier -- not in dynamic variables, static variables, or dataprop indices. Use `opc`, `opcode`, etc.
 
-### Runtime macros
-
-Freestanding ATS2 code may need these macros in a runtime header:
-
-- `ATSPMVi0nt(i)` -- plain integer literals
-- `ATSPMVintrep(i)` -- statically-indexed integer representations
-- `ATSPMVcastfn(castfn, ty, val)` -- zero-cost type casts
-- `ATSextfcall(f, args)` -- external function calls via `$extfcall`
-
-### dataprop parameters are erased
-
-Adding a `dataprop` proof parameter to a `= "mac#"` function does NOT change its C signature. C callers continue to work unchanged. This means you can strengthen ATS interfaces with proof requirements without breaking C code.
 
 ## Writing Dataprops
 
@@ -232,19 +194,17 @@ The `nl <= BUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars) bu
 
 ## Guidelines for Application Code
 
-1. **Prefer ATS over C blocks**: ATS type checking catches proof violations at compile time. C blocks bypass all checking. Write new logic in ATS whenever possible.
+1. **Every state transition needs a proof witness**: Construct and consume a dataprop proof for every state transition.
 
-2. **Every state transition needs a proof witness**: Construct and consume a dataprop proof for every state transition. This means state transitions must be in ATS code, not C blocks.
+2. **Never modify shared buffers between DOM operations**: If you must read or write a shared buffer between DOM calls, flush pending diffs first.
 
-3. **Never modify shared buffers between DOM operations**: If you must read or write a shared buffer between DOM calls, flush pending diffs first.
+3. **Async operations require state setup BEFORE the call**: If a function triggers an async bridge operation, all state must be set BEFORE the call, not in a continuation or callback.
 
-4. **Async operations require state setup BEFORE the call**: If a function triggers an async bridge operation, all state must be set BEFORE the call, not in a continuation or callback.
+4. **Every bug fix must add a preventing proof or invariant**: When fixing a bug, don't just fix the code -- add a dataprop, absprop, or documented structural invariant that makes the same class of bug impossible to reintroduce. If the invariant can be encoded as a dataprop (data values, state transitions, bounds), use a dataprop. If it's structural (recursion shape, continuation pattern), document it as a formal invariant in the `.sats` file with the specific bug class it prevents.
 
-5. **Every bug fix must add a preventing proof or invariant**: When fixing a bug, don't just fix the code -- add a dataprop, absprop, or documented structural invariant that makes the same class of bug impossible to reintroduce. If the invariant can be encoded as a dataprop (data values, state transitions, bounds), use a dataprop. If it's structural (recursion shape, continuation pattern), document it as a formal invariant in the `.sats` file with the specific bug class it prevents.
+5. **Test failures require dataprop analysis**: Every test failure MUST result in comprehensive analysis of all potential dataprops that could have prevented the failure, followed by implementation of those dataprops. The analysis should identify: (a) what runtime invariant was violated, (b) whether a dataprop/absprop could encode that invariant at compile time, (c) what proof obligations would prevent the same class of failure. Even if the fix is a one-line change, the dataprop analysis and implementation are mandatory.
 
-6. **Test failures require dataprop analysis**: Every test failure MUST result in comprehensive analysis of all potential dataprops that could have prevented the failure, followed by implementation of those dataprops. The analysis should identify: (a) what runtime invariant was violated, (b) whether a dataprop/absprop could encode that invariant at compile time, (c) what proof obligations would prevent the same class of failure. Even if the fix is a one-line change, the dataprop analysis and implementation are mandatory.
-
-7. **Errors must be impossible or indicate bad input**: Every error condition must either be (a) made impossible by dependent types / dataprops (compile-time elimination), or (b) the result of invalid external input (corrupt data, malformed input), in which case the user must see a clear visual indication of what was wrong. Console-only logging is never sufficient for user-facing errors.
+6. **Errors must be impossible or indicate bad input**: Every error condition must either be (a) made impossible by dependent types / dataprops (compile-time elimination), or (b) the result of invalid external input (corrupt data, malformed input), in which case the user must see a clear visual indication of what was wrong. Console-only logging is never sufficient for user-facing errors.
 
 ## Proof Architecture
 
