@@ -65,7 +65,7 @@ Functional correctness proofs often imply safety, but safety alone is insufficie
 - State machine proofs ensure operations happen *in the right order*, not just *without crashing*
 - Linear resource tracking proves DOM nodes are *correctly parented*, not just *not leaked*
 
-If C code is unavoidable, document why dataprops couldn't be used and what runtime checks substitute for compile-time proofs.
+If you think C code is needed, you are almost certainly wrong -- rethink the design until it can be expressed in ATS2 with enforced proofs.
 
 ### UI and Application Logic Proofs
 
@@ -85,13 +85,13 @@ dataprop APP_STATE_VALID(state: int) =
 absprop SERIALIZE_ROUNDTRIP(serialize_len: int, restore_ok: int)
 ```
 
-## Converting C Blocks to ATS2
+## Avoiding C Blocks
 
-C `%{` blocks bypass all ATS2 type checking. Convert them to pure ATS whenever possible. The general pattern:
+Application code must not use C `%{` blocks -- they bypass all ATS2 type checking. If you need a C primitive that ward does not already provide, declare it properly:
 
 ### Step 1: Declare C primitives as extern
 
-Move irreducible C operations (byte access, bitwise ops, pointer arithmetic) to a header as macros, then declare them in `.sats`:
+Put irreducible C operations (byte access, bitwise ops, pointer arithmetic) in a header as macros, then declare them in `.sats`:
 
 ```ats
 (* .sats -- declare the primitive *)
@@ -105,9 +105,9 @@ fun buf_set_u8(p: ptr, off: int, v: int): void = "mac#"
 #define buf_set_u8(p, off, v) (((unsigned char*)(p))[(off)] = (unsigned char)(v))
 ```
 
-### Step 2: Move global state to C files
+### Step 2: Keep global state in C files, not inline
 
-Don't keep `static` variables in `%{` blocks. Put them in C files with getter/setter functions declared as `= "mac#"` in `.sats`.
+Global state belongs in dedicated C files with getter/setter functions declared as `= "mac#"` in `.sats`. Never use `static` variables in `%{` blocks.
 
 ### Step 3: Write ATS implementations using the primitives
 
@@ -209,16 +209,9 @@ The key insight: if the buffer size changes, only the definition site needs upda
 stadef BUF_CAP = 4096      (* for type-level constraints *)
 ```
 
-### praxi for connecting proofs to specific values
+### Never use praxi in application code
 
-Use `praxi` (proof axioms) when a proof should only be obtainable through specific known values:
-
-```ats
-praxi lemma_attr_class(): VALID_ATTR_NAME(5)   (* "class" *)
-praxi lemma_attr_id(): VALID_ATTR_NAME(2)      (* "id" *)
-```
-
-These are the ONLY way to obtain `VALID_ATTR_NAME` proofs. Since each praxi maps to a specific known-safe string, arbitrary dynamic data can never produce a proof.
+`praxi` (proof axioms) are trusted assertions -- the compiler does not verify them. They belong only in ward's internal implementation where each use is individually justified. Application code must construct all proofs through dataprop constructors, which the compiler fully checks. If you cannot produce a proof through constructors, the design needs to change -- file a bug against ward if the API doesn't provide a way to construct the proof you need.
 
 ### dataprop vs dataview
 
@@ -241,7 +234,7 @@ The `nl <= BUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars) bu
 
 1. **Prefer ATS over C blocks**: ATS type checking catches proof violations at compile time. C blocks bypass all checking. Write new logic in ATS whenever possible.
 
-2. **Every state transition needs a proof witness**: When changing application state in C code, cite the dataprop constructor in a comment. When in ATS code, construct and consume the proof.
+2. **Every state transition needs a proof witness**: Construct and consume a dataprop proof for every state transition. This means state transitions must be in ATS code, not C blocks.
 
 3. **Never modify shared buffers between DOM operations**: If you must read or write a shared buffer between DOM calls, flush pending diffs first.
 
@@ -255,12 +248,4 @@ The `nl <= BUF_CAP` is redundant with `VALID_ATTR_NAME` (max name is 8 chars) bu
 
 ## Proof Architecture
 
-Proofs are enforced at three levels:
-
-| Level | Mechanism | Example |
-|-------|-----------|---------|
-| **Enforced** | ATS type system rejects incorrect code | Function requires `VALID_OPCODE` proof |
-| **Checked** | Dependent types + `praxi` functions | Function constructs transition proof witness |
-| **Documented** | Comments in C code | `app_state = X; // TRANSITION: ...` |
-
-New code should prefer enforced > checked > documented. Move proofs up the hierarchy whenever feasible.
+All proofs must be **enforced**: the ATS2 type system rejects incorrect code at compile time. If a function requires a `VALID_OPCODE` proof, there is no way to call it without constructing that proof through a dataprop constructor. Comments and conventions are not proofs. If an invariant cannot be enforced by the type system, the design must change until it can be.
