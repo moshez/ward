@@ -72,7 +72,7 @@ exerciser/              # Test programs
   wasm_exerciser.dats   # WASM exerciser
   dom_exerciser.dats    # DOM exerciser (pure safe ATS2)
   node_exerciser.mjs    # Node.js wrapper (jsdom)
-  anti/                 # 13 files that must FAIL to compile
+  anti/                 # 17 files that must FAIL to compile
 
 tests/                  # Bridge tests (node:test)
 docs/                   # Documentation
