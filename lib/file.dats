@@ -39,6 +39,13 @@ implement
 ward_file_get_size() = _ward_bridge_stash_get_int(0)
 
 implement
+ward_file_get_name_len() = _ward_bridge_stash_get_int(2)
+
+implement
+ward_file_get_name{n}(len) =
+  ward_bridge_recv(_ward_bridge_stash_get_int(1), len)
+
+implement
 ward_file_read{l}{n}(handle, file_offset, out, len) = let
   val outp = $UNSAFE.castvwtp1{ptr}(out) (* [U-bw] *)
 in _ward_js_file_read(handle, file_offset, len, outp) end
