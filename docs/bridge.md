@@ -101,6 +101,9 @@ The bridge provides these functions as WASM imports under the `env` namespace:
 |--------|-----------|---------|
 | `ward_js_measure_node` | `(nodeId) -> i32` | Measure DOM node, fill stash |
 | `ward_js_query_selector` | `(selectorPtr, selectorLen) -> i32` | Query selector, returns node_id or -1 |
+| `ward_js_caret_position_from_point` | `(x, y) -> i32` | Caret position at viewport coords, sets stash slot 0 to node_id |
+| `ward_js_read_text_content` | `(nodeId) -> i32` | Read textContent as UTF-8, stash data, return byte length |
+| `ward_js_measure_text_offset` | `(nodeId, offset) -> i32` | Measure bounding rect at char offset in first text child |
 
 ### Event listener
 

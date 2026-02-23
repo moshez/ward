@@ -349,6 +349,15 @@ fun ward_measure_get_top (): int
 fun ward_measure_get_left (): int
 fun ward_query_selector {n:pos}
   (selector: ward_safe_text(n), selector_len: int n): int   (* node_id or -1 *)
+
+fun ward_caret_position_from_point (x: int, y: int): int   (* char offset or -1 *)
+fun ward_caret_get_node_id (): int                          (* target node_id from stash *)
+
+fun ward_read_text_content (node_id: int): int              (* byte length, 0=not found *)
+fun ward_read_text_content_get {n:pos}
+  (len: int n): [l:agz] ward_arr(byte, l, n)               (* retrieve stashed text *)
+
+fun ward_measure_text_offset (node_id: int, offset: int): int  (* 1=found, 0=not found *)
 ```
 
 ---
