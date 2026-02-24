@@ -65,3 +65,30 @@ ward_read_text_content_get{n}(len) =
 implement
 ward_measure_text_offset(node_id, offset) =
   _ward_js_measure_text_offset(node_id, offset)
+
+(* --- Selection APIs --- *)
+
+extern fun _ward_js_get_selection_text
+  (): int = "mac#ward_js_get_selection_text"
+
+extern fun _ward_js_get_selection_rect
+  (): int = "mac#ward_js_get_selection_rect"
+
+extern fun _ward_js_get_selection_range
+  (): int = "mac#ward_js_get_selection_range"
+
+implement
+ward_get_selection_text() =
+  _ward_js_get_selection_text()
+
+implement
+ward_get_selection_text_get{n}(len) =
+  ward_bridge_recv(_ward_bridge_stash_get_int(1), len)
+
+implement
+ward_get_selection_rect() =
+  _ward_js_get_selection_rect()
+
+implement
+ward_get_selection_range() =
+  _ward_js_get_selection_range()
